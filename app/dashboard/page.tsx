@@ -1,9 +1,12 @@
+import RatingsPanel from "@/components/ratings-panel";
 import WatchlistPanel from "@/components/watchlist-panel";
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
 import { auth } from "@/auth";
+import type { RatingsSummary } from "@/components/ratings-panel";
 import type { WatchlistPanelItem } from "@/components/watchlist-panel";
 import { episodes, movies, ratings, shows, watchEvents, watchlistItems } from "@/db/schema";
 import { getDb } from "@/lib/db";
+import { getRatingsSummary } from "@/lib/ratings";
 
 type Widget = {
   label: string;
@@ -89,6 +92,8 @@ async function getInitialWatchlistItems(appUserId: string): Promise<WatchlistPan
       showId: row.showId,
       listedAt: row.listedAt ? row.listedAt.toISOString() : null,
       title: row.itemType === "movie" ? row.movieTitle : row.showTitle,
+      userRatingValue: null,
+      averageRatingValue: null,
     }));
   } catch {
     return [];
@@ -145,12 +150,21 @@ async function getRecentActivity(appUserId: string): Promise<RecentActivityItem[
   }
 }
 
+function buildEmptyRatingsSummary(): RatingsSummary {
+  return {
+    total: 0,
+    average: null,
+    distribution: Array.from({ length: 10 }, (_, index) => ({ rating: index + 1, count: 0 })),
+  };
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   const appUserId = session?.user?.appUserId;
   const widgets = appUserId ? await getWidgetsForUser(appUserId) : buildFallbackWidgets();
   const initialWatchlistItems = appUserId ? await getInitialWatchlistItems(appUserId) : [];
   const recentActivity = appUserId ? await getRecentActivity(appUserId) : [];
+  const ratingsSummary = appUserId ? await getRatingsSummary(appUserId) : buildEmptyRatingsSummary();
 
   return (
     <section className="space-y-6">
@@ -187,6 +201,8 @@ export default async function DashboardPage() {
           )}
         </section>
       </div>
+
+      <RatingsPanel initialSummary={ratingsSummary} />
     </section>
   );
 }

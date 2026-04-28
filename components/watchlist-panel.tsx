@@ -9,6 +9,8 @@ export type WatchlistPanelItem = {
   showId: number | null;
   listedAt: string | null;
   title: string | null;
+  userRatingValue: number | null;
+  averageRatingValue: number | null;
 };
 
 type TmdbSearchResult = {
@@ -274,6 +276,8 @@ export default function WatchlistPanel({ initialItems }: WatchlistPanelProps) {
   const movieCount = useMemo(() => items.filter((item) => item.itemType === "movie").length, [items]);
   const showCount = useMemo(() => items.filter((item) => item.itemType === "show").length, [items]);
 
+  const formatStars = (value: number | null) => (typeof value === "number" ? (value / 2).toFixed(1) : null);
+
   return (
     <section className="card rounded-xl p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -374,6 +378,20 @@ export default function WatchlistPanel({ initialItems }: WatchlistPanelProps) {
               <p className="text-xs uppercase tracking-wide text-slate-400">
                 {item.itemType} #{item.itemType === "movie" ? item.movieId : item.showId}
               </p>
+              {typeof item.userRatingValue === "number" || typeof item.averageRatingValue === "number" ? (
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300">
+                  {typeof item.userRatingValue === "number" ? (
+                    <span className="rounded-full border border-white/10 bg-slate-900/60 px-2 py-0.5">
+                      You {formatStars(item.userRatingValue)} / 5
+                    </span>
+                  ) : null}
+                  {typeof item.averageRatingValue === "number" ? (
+                    <span className="rounded-full border border-white/10 bg-slate-900/60 px-2 py-0.5">
+                      Avg {formatStars(item.averageRatingValue)} / 5
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center gap-2">
               {item.itemType === "show" ? (

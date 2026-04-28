@@ -78,6 +78,7 @@ OAuth callback URLs for local development:
 - /api/watch-events
 - /api/tmdb/search
 - /api/jobs/stats-snapshot
+- /api/ratings
 
 ## Project structure
 

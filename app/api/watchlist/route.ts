@@ -1,8 +1,8 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { movies, shows, watchlistItems } from "@/db/schema";
+import { movies, ratings, shows, watchlistItems } from "@/db/schema";
 import { getDb } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -72,6 +72,67 @@ export async function GET() {
     .where(eq(watchlistItems.userId, appUserId))
     .orderBy(desc(watchlistItems.createdAt));
 
+  const movieIds = rows.map((row) => row.movieId).filter((id): id is number => typeof id === "number");
+  const showIds = rows.map((row) => row.showId).filter((id): id is number => typeof id === "number");
+
+  const userMovieRatings = movieIds.length
+    ? await db
+        .select({ movieId: ratings.movieId, ratingValue: ratings.ratingValue })
+        .from(ratings)
+        .where(and(eq(ratings.userId, appUserId), eq(ratings.mediaType, "movie"), inArray(ratings.movieId, movieIds)))
+    : [];
+
+  const userShowRatings = showIds.length
+    ? await db
+        .select({ showId: ratings.showId, ratingValue: ratings.ratingValue })
+        .from(ratings)
+        .where(and(eq(ratings.userId, appUserId), eq(ratings.mediaType, "show"), inArray(ratings.showId, showIds)))
+    : [];
+
+  const movieAverages = movieIds.length
+    ? await db
+        .select({ movieId: ratings.movieId, average: sql<number | null>`avg(${ratings.ratingValue})` })
+        .from(ratings)
+        .where(and(eq(ratings.mediaType, "movie"), inArray(ratings.movieId, movieIds)))
+        .groupBy(ratings.movieId)
+    : [];
+
+  const showAverages = showIds.length
+    ? await db
+        .select({ showId: ratings.showId, average: sql<number | null>`avg(${ratings.ratingValue})` })
+        .from(ratings)
+        .where(and(eq(ratings.mediaType, "show"), inArray(ratings.showId, showIds)))
+        .groupBy(ratings.showId)
+    : [];
+
+  const userMovieRatingMap = new Map<number, number>();
+  for (const row of userMovieRatings) {
+    if (typeof row.movieId === "number") {
+      userMovieRatingMap.set(row.movieId, row.ratingValue);
+    }
+  }
+
+  const userShowRatingMap = new Map<number, number>();
+  for (const row of userShowRatings) {
+    if (typeof row.showId === "number") {
+      userShowRatingMap.set(row.showId, row.ratingValue);
+    }
+  }
+
+  const movieAverageMap = new Map<number, number>();
+  for (const row of movieAverages) {
+    if (typeof row.movieId === "number" && typeof row.average === "number") {
+      movieAverageMap.set(row.movieId, row.average);
+    }
+  }
+
+  const showAverageMap = new Map<number, number>();
+  for (const row of showAverages) {
+    if (typeof row.showId === "number" && typeof row.average === "number") {
+      showAverageMap.set(row.showId, row.average);
+    }
+  }
+
   const items = rows.map((row) => ({
     id: row.id,
     itemType: row.itemType,
@@ -79,6 +140,18 @@ export async function GET() {
     showId: row.showId,
     listedAt: row.listedAt,
     title: row.itemType === "movie" ? row.movieTitle : row.showTitle,
+    userRatingValue:
+      row.itemType === "movie" && typeof row.movieId === "number"
+        ? userMovieRatingMap.get(row.movieId) ?? null
+        : row.itemType === "show" && typeof row.showId === "number"
+          ? userShowRatingMap.get(row.showId) ?? null
+          : null,
+    averageRatingValue:
+      row.itemType === "movie" && typeof row.movieId === "number"
+        ? movieAverageMap.get(row.movieId) ?? null
+        : row.itemType === "show" && typeof row.showId === "number"
+          ? showAverageMap.get(row.showId) ?? null
+          : null,
   }));
 
   return NextResponse.json({ items });
