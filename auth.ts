@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
 import { upsertAppUserFromOAuthIdentity } from "@/lib/app-users";
@@ -6,6 +7,7 @@ import { upsertAppUserFromOAuthIdentity } from "@/lib/app-users";
 const authSecret = process.env.NEXTAUTH_SECRET ?? (process.env.NODE_ENV === "development" ? "watcht-dev-secret-change-me" : undefined);
 
 const providers = [];
+const isDev = process.env.NODE_ENV === "development";
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
@@ -25,6 +27,30 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
   );
 }
 
+if (isDev) {
+  providers.push(
+    Credentials({
+      name: "Local Dev",
+      credentials: {},
+      async authorize() {
+        return { id: "local-dev", name: "Local Dev" };
+      },
+    })
+  );
+}
+
+function resolveProviderAccountId(account: { providerAccountId?: string } | null | undefined, user: { id?: string } | null | undefined) {
+  if (account?.providerAccountId) {
+    return account.providerAccountId;
+  }
+
+  if (user?.id) {
+    return user.id;
+  }
+
+  return null;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: authSecret,
   providers,
@@ -36,14 +62,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async signIn({ user, account }) {
-      if (!account?.provider || !account.providerAccountId) {
+      const providerAccountId = resolveProviderAccountId(account, user);
+      if (!account?.provider || !providerAccountId) {
         return true;
       }
 
       try {
         const appUser = await upsertAppUserFromOAuthIdentity({
           provider: account.provider,
-          providerAccountId: account.providerAccountId,
+          providerAccountId,
           displayName: user.name,
         });
 
@@ -64,10 +91,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.appHandle = user.appHandle;
       }
 
-      if ((!token.appUserId || !token.appHandle) && account?.provider && account.providerAccountId) {
+      const providerAccountId = resolveProviderAccountId(account, user);
+      if ((!token.appUserId || !token.appHandle) && account?.provider && providerAccountId) {
         const appUser = await upsertAppUserFromOAuthIdentity({
           provider: account.provider,
-          providerAccountId: account.providerAccountId,
+          providerAccountId,
           displayName: user?.name,
         });
 

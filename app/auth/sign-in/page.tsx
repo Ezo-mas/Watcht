@@ -11,6 +11,15 @@ const providers = [
     label: "GitHub",
     configured: Boolean(process.env.GITHUB_ID && process.env.GITHUB_SECRET),
   },
+  ...(process.env.NODE_ENV === "development"
+    ? [
+        {
+          id: "credentials",
+          label: "Local Dev",
+          configured: true,
+        },
+      ]
+    : []),
 ] as const;
 
 export default function SignInPage() {
