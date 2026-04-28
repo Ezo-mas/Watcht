@@ -4,8 +4,10 @@ import {
   boolean,
   check,
   date,
+  index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   smallint,
@@ -255,5 +257,45 @@ export const ratings = pgTable(
   },
   (table) => ({
     ratingsValueRange: check("ratings_rating_value_check", sql`${table.ratingValue} between 1 and 10`),
+  })
+);
+
+export const statsSnapshots = pgTable(
+  "stats_snapshots",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    snapshotDay: date("snapshot_day").notNull(),
+    watchedCount: integer("watched_count").notNull().default(0),
+    moviesWatchedCount: integer("movies_watched_count").notNull().default(0),
+    episodesWatchedCount: integer("episodes_watched_count").notNull().default(0),
+    watchlistCount: integer("watchlist_count").notNull().default(0),
+    ratingsCount: integer("ratings_count").notNull().default(0),
+    averageRating: numeric("average_rating", { precision: 4, scale: 2 }),
+    totalMinutesWatched: integer("total_minutes_watched"),
+    payload: jsonb("payload").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userSnapshotUnique: uniqueIndex("stats_snapshots_user_day_uq").on(table.userId, table.snapshotDay),
+  })
+);
+
+export const traktImportRuns = pgTable(
+  "trakt_import_runs",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id").references(() => appUsers.id, { onDelete: "set null" }),
+    sourcePath: text("source_path").notNull(),
+    selectedFiles: jsonb("selected_files").notNull().default([]),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    status: text("status").notNull().default("running"),
+    notes: text("notes"),
+  },
+  (table) => ({
+    startedAtIndex: index("trakt_import_runs_started_idx").on(table.startedAt),
   })
 );

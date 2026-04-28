@@ -210,3 +210,20 @@ create table trakt_import_runs (
 );
 
 create index trakt_import_runs_started_idx on trakt_import_runs (started_at desc);
+
+create table stats_snapshots (
+  id bigserial primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  snapshot_day date not null,
+  watched_count integer not null default 0,
+  movies_watched_count integer not null default 0,
+  episodes_watched_count integer not null default 0,
+  watchlist_count integer not null default 0,
+  ratings_count integer not null default 0,
+  average_rating numeric(4, 2),
+  total_minutes_watched integer,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create unique index stats_snapshots_user_day_uq on stats_snapshots (user_id, snapshot_day);

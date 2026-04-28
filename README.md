@@ -52,6 +52,7 @@ Required for local auth and data flows:
 - DATABASE_URL
 - REDIS_URL
 - TMDB_API_KEY
+- JOB_SECRET (optional for /api/jobs/stats-snapshot)
 
 OAuth callback URLs for local development:
 
@@ -75,6 +76,8 @@ OAuth callback URLs for local development:
 - /api/auth/[...nextauth]
 - /api/watchlist
 - /api/watch-events
+- /api/tmdb/search
+- /api/jobs/stats-snapshot
 
 ## Project structure
 
