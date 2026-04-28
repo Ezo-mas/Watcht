@@ -11,12 +11,14 @@ const addWatchlistSchema = z.union([
   z.object({
     itemType: z.literal("movie"),
     movieId: z.number().int().positive().optional(),
+    tmdbId: z.number().int().positive().optional(),
     title: z.string().trim().min(1).max(240).optional(),
     releaseYear: z.number().int().min(1878).max(3000).optional(),
   }),
   z.object({
     itemType: z.literal("show"),
     showId: z.number().int().positive().optional(),
+    tmdbId: z.number().int().positive().optional(),
     title: z.string().trim().min(1).max(240).optional(),
     releaseYear: z.number().int().min(1878).max(3000).optional(),
   }),
@@ -97,16 +99,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  if (parsed.data.itemType === "movie" && !parsed.data.movieId && !parsed.data.title) {
-    return NextResponse.json({ error: "movieId or title is required for movie items" }, { status: 400 });
+  if (parsed.data.itemType === "movie" && !parsed.data.movieId && !parsed.data.tmdbId && !parsed.data.title) {
+    return NextResponse.json({ error: "movieId, tmdbId, or title is required for movie items" }, { status: 400 });
   }
 
-  if (parsed.data.itemType === "show" && !parsed.data.showId && !parsed.data.title) {
-    return NextResponse.json({ error: "showId or title is required for show items" }, { status: 400 });
+  if (parsed.data.itemType === "show" && !parsed.data.showId && !parsed.data.tmdbId && !parsed.data.title) {
+    return NextResponse.json({ error: "showId, tmdbId, or title is required for show items" }, { status: 400 });
   }
 
   let movieId = parsed.data.itemType === "movie" ? (parsed.data.movieId ?? null) : null;
   let showId = parsed.data.itemType === "show" ? (parsed.data.showId ?? null) : null;
+
+  if (parsed.data.itemType === "movie" && !movieId && parsed.data.tmdbId) {
+    const [existingMovie] = await db
+      .select({ id: movies.id })
+      .from(movies)
+      .where(eq(movies.tmdbId, parsed.data.tmdbId))
+      .limit(1);
+
+    movieId = existingMovie?.id ?? null;
+  }
 
   if (parsed.data.itemType === "movie" && !movieId && parsed.data.title) {
     const insertedMovie = await db
@@ -114,10 +126,21 @@ export async function POST(request: Request) {
       .values({
         title: parsed.data.title,
         releaseYear: parsed.data.releaseYear ?? null,
+        tmdbId: parsed.data.tmdbId ?? null,
       })
       .returning({ id: movies.id });
 
     movieId = insertedMovie[0]?.id ?? null;
+  }
+
+  if (parsed.data.itemType === "show" && !showId && parsed.data.tmdbId) {
+    const [existingShow] = await db
+      .select({ id: shows.id })
+      .from(shows)
+      .where(eq(shows.tmdbId, parsed.data.tmdbId))
+      .limit(1);
+
+    showId = existingShow?.id ?? null;
   }
 
   if (parsed.data.itemType === "show" && !showId && parsed.data.title) {
@@ -126,6 +149,7 @@ export async function POST(request: Request) {
       .values({
         title: parsed.data.title,
         releaseYear: parsed.data.releaseYear ?? null,
+        tmdbId: parsed.data.tmdbId ?? null,
       })
       .returning({ id: shows.id });
 

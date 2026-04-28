@@ -103,6 +103,17 @@ type TmdbSearchApiResponse = {
   }>;
 };
 
+type TmdbSearchApiItem = {
+  id: number;
+  media_type: "movie" | "tv";
+  title?: string | null;
+  name?: string | null;
+  release_date?: string | null;
+  first_air_date?: string | null;
+  overview?: string | null;
+  poster_path?: string | null;
+};
+
 function toYear(value: string | null | undefined) {
   if (!value) {
     return null;
@@ -113,9 +124,9 @@ function toYear(value: string | null | undefined) {
 }
 
 function normalizeSearchResults(query: string, data: TmdbSearchApiResponse): TmdbSearchResponse {
-  const results = (data.results ?? [])
-    .filter((item) => item.media_type === "movie" || item.media_type === "tv")
-    .map((item) => ({
+  const results: TmdbSearchResult[] = (data.results ?? [])
+    .filter((item): item is TmdbSearchApiItem => item.media_type === "movie" || item.media_type === "tv")
+    .map((item): TmdbSearchResult => ({
       id: item.id,
       mediaType: item.media_type === "movie" ? "movie" : "show",
       title: item.title?.trim() || item.name?.trim() || "Untitled",
