@@ -51,6 +51,9 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
+      dotenv-cli:
+        specifier: ^4.0.0
+        version: 4.0.0
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
@@ -1347,9 +1350,20 @@ packages:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
 
+  dotenv-cli@4.0.0:
+    resolution: {integrity: sha512-ByKEec+ashePEXthZaA1fif9XDtcaRnkN7eGdBDx3HHRjwZ/rA1go83Cbs4yRrx3JshsCf96FjAyIA2M672+CQ==}
+    hasBin: true
+
+  dotenv-expand@5.1.0:
+    resolution: {integrity: sha512-YXQl1DSa4/PQyRfgrv6aoNjhasp/p4qs9FjJ4q4cQk+8m4r6k4ZSiEyytKG8f8W9gi8WsQtIObNmKd+tMzNTmA==}
+
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
+
+  dotenv@8.6.0:
+    resolution: {integrity: sha512-IrPdXQsk2BbzvCBGBOTmmSH5SodmqZNt4ERAZDmW4CT+tL8VtvinqywuANaFu4bOMWki16nqf0e4oC0QIaDr/g==}
+    engines: {node: '>=10'}
 
   drizzle-kit@0.31.10:
     resolution: {integrity: sha512-7OZcmQUrdGI+DUNNsKBn1aW8qSoKuTH7d0mYgSP8bAzdFzKoovxEFnoGQp2dVs82EOJeYycqRtciopszwUf8bw==}
@@ -3684,7 +3698,18 @@ snapshots:
     dependencies:
       esutils: 2.0.3
 
+  dotenv-cli@4.0.0:
+    dependencies:
+      cross-spawn: 7.0.6
+      dotenv: 8.6.0
+      dotenv-expand: 5.1.0
+      minimist: 1.2.8
+
+  dotenv-expand@5.1.0: {}
+
   dotenv@17.4.2: {}
+
+  dotenv@8.6.0: {}
 
   drizzle-kit@0.31.10:
     dependencies:
