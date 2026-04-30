@@ -10,6 +10,9 @@ declare module "next-auth" {
     user: DefaultSession["user"] & {
       appUserId?: string;
       handle?: string;
+      displayName?: string;
+      isPrivate?: boolean;
+      joinedAt?: string;
     };
   }
 }
