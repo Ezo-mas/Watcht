@@ -34,10 +34,35 @@ if (localBypassEnabled) {
       name: "Local Dev",
       credentials: {},
       async authorize() {
-        return { id: "local-dev", name: "Local Dev" };
+        // Create or resolve a persistent local dev app user in the DB so the
+        // local bypass works against a real record instead of only in-memory.
+        const providerAccountId = "local-dev";
+
+        const appUser = await upsertAppUserFromOAuthIdentity({
+          provider: "credentials",
+          providerAccountId,
+          displayName: "Local Dev",
+        });
+
+        // Return the provider account id as the user id so resolveProviderAccountId
+        // can pick it up; include appUser fields for downstream callbacks.
+        return { id: providerAccountId, name: "Local Dev", appUserId: appUser.id, appHandle: appUser.handle };
       },
     })
   );
+}
+
+// Basic runtime warnings to help diagnose common misconfigurations
+if (providers.length === 0) {
+  console.warn("NextAuth: no OAuth providers configured. Set GOOGLE_CLIENT_ID/SECRET or GITHUB_ID/SECRET in .env.local or enable local bypass in development.");
+}
+
+if (!process.env.NEXTAUTH_URL) {
+  console.warn("NEXTAUTH_URL is not set. OAuth providers require the redirect URL to match the provider app settings (e.g. http://localhost:3000).");
+}
+
+if (!authSecret) {
+  console.warn("NEXTAUTH_SECRET is not set; using an insecure default in development. Set NEXTAUTH_SECRET in .env.local for production.");
 }
 
 function resolveProviderAccountId(account: { providerAccountId?: string } | null | undefined, user: { id?: string } | null | undefined) {
@@ -68,20 +93,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return true;
       }
 
-      try {
-        const appUser = await upsertAppUserFromOAuthIdentity({
-          provider: account.provider,
-          providerAccountId,
-          displayName: user.name,
-        });
+      const appUser = await upsertAppUserFromOAuthIdentity({
+        provider: account.provider,
+        providerAccountId,
+        displayName: user.name,
+      });
 
-        user.appUserId = appUser.id;
-        user.appHandle = appUser.handle;
-        return true;
-      } catch (error) {
-        console.error("Unable to sync OAuth user with app_users", error);
-        return false;
-      }
+      user.appUserId = appUser.id;
+      user.appHandle = appUser.handle;
+      return true;
     },
     async jwt({ token, user, account }) {
       if (user?.appUserId) {
@@ -93,7 +113,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       const providerAccountId = resolveProviderAccountId(account, user);
-      if ((!token.appUserId || !token.appHandle) && account?.provider && providerAccountId) {
+      // Avoid DB calls for the local credentials bypass
+      if (
+        (!token.appUserId || !token.appHandle) &&
+        account?.provider &&
+        providerAccountId &&
+        !(account.provider === "credentials" && localBypassEnabled)
+      ) {
         const appUser = await upsertAppUserFromOAuthIdentity({
           provider: account.provider,
           providerAccountId,
@@ -110,21 +136,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user && typeof token.appUserId === "string") {
         session.user.appUserId = token.appUserId;
 
-        const appUser = await getAppUserSummaryById(token.appUserId);
-        if (appUser) {
-          session.user.handle = appUser.handle;
-          session.user.displayName = appUser.displayName ?? undefined;
-          session.user.isPrivate = appUser.isPrivate;
-          session.user.joinedAt = appUser.joinedAt?.toISOString() ?? undefined;
-        } else {
+        // For local dev bypass, avoid DB lookups and use token fallback values
+        if (localBypassEnabled && token.appUserId.startsWith("local-")) {
           session.user.handle = typeof token.appHandle === "string" ? token.appHandle : undefined;
+          session.user.displayName = typeof token.appHandle === "string" ? token.appHandle : undefined;
+          session.user.isPrivate = true;
+        } else {
+          const appUser = await getAppUserSummaryById(token.appUserId);
+          if (appUser) {
+            session.user.handle = appUser.handle;
+            session.user.displayName = appUser.displayName ?? undefined;
+            session.user.isPrivate = appUser.isPrivate;
+            session.user.joinedAt = appUser.joinedAt?.toISOString() ?? undefined;
+          } else {
+            session.user.handle = typeof token.appHandle === "string" ? token.appHandle : undefined;
+          }
         }
       }
 
       return session;
     },
     authorized({ auth: session, request: { nextUrl } }) {
-      if (nextUrl.pathname.startsWith("/dashboard")) {
+      if (nextUrl.pathname.startsWith("/dashboard") || nextUrl.pathname.startsWith("/profile")) {
         return !!session?.user;
       }
 

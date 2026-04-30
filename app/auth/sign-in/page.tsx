@@ -79,7 +79,27 @@ export default async function SignInPage() {
                 return;
               }
 
-              await authSignIn(provider.id, { redirectTo: "/dashboard" });
+              try {
+                if (provider.id === "credentials") {
+                  // Credentials provider expects credentials; local dev bypass uses an empty credentials object
+                  await authSignIn("credentials", { credentials: {}, callbackUrl: "/dashboard" });
+                } else {
+                  // OAuth flows use callbackUrl
+                  await authSignIn(provider.id, { callbackUrl: "/dashboard" });
+                }
+              } catch (err) {
+                // If Next.js is issuing an internal redirect (e.g. NEXT_REDIRECT), rethrow so Next handles it.
+                const digest = (err instanceof Error ? err.message : String(err)) ?? "";
+                if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) {
+                  throw err;
+                }
+
+                // Provide clearer server-side logging and a friendlier error message for real errors
+                console.error("Sign-in failed for provider", provider.id, err);
+                throw new Error(
+                  `Sign-in failed for ${provider.label}. Check provider client ID/secret, NEXTAUTH_URL, and redirect URIs.`
+                );
+              }
             }}
           >
             <button
