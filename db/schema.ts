@@ -37,6 +37,24 @@ export const appUsers = pgTable("app_users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const profileLayouts = pgTable("profile_layouts", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => appUsers.id, { onDelete: "cascade" }),
+  blockOrder: jsonb("block_order").$type<string[]>().notNull().default([]),
+  hiddenBlockIds: jsonb("hidden_block_ids").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => appUsers.id, { onDelete: "cascade" }),
+  blockOrder: jsonb("block_order").$type<string[]>().notNull().default([]),
+  hiddenBlockIds: jsonb("hidden_block_ids").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const movies = pgTable(
   "movies",
   {
