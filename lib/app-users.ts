@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { appUsers } from "@/db/schema";
 import { getDb } from "@/lib/db";
 
@@ -15,6 +15,14 @@ type OAuthIdentityInput = {
   displayName?: string | null;
 };
 
+type AppUserSummary = {
+  id: string;
+  handle: string;
+  displayName: string | null;
+  isPrivate: boolean;
+  joinedAt: Date | null;
+};
+
 export async function upsertAppUserFromOAuthIdentity(input: OAuthIdentityInput): Promise<{ id: string; handle: string }> {
   const db = getDb();
   const handle = buildOAuthHandle(input.provider, input.providerAccountId);
@@ -23,6 +31,8 @@ export async function upsertAppUserFromOAuthIdentity(input: OAuthIdentityInput):
     .values({
       handle,
       displayName: input.displayName ?? null,
+      isPrivate: true,
+      joinedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: appUsers.handle,
@@ -41,4 +51,21 @@ export async function upsertAppUserFromOAuthIdentity(input: OAuthIdentityInput):
   }
 
   return result;
+}
+
+export async function getAppUserSummaryById(appUserId: string): Promise<AppUserSummary | null> {
+  const db = getDb();
+  const [result] = await db
+    .select({
+      id: appUsers.id,
+      handle: appUsers.handle,
+      displayName: appUsers.displayName,
+      isPrivate: appUsers.isPrivate,
+      joinedAt: appUsers.joinedAt,
+    })
+    .from(appUsers)
+    .where(eq(appUsers.id, appUserId))
+    .limit(1);
+
+  return result ?? null;
 }

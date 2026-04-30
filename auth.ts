@@ -2,12 +2,13 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
-import { upsertAppUserFromOAuthIdentity } from "@/lib/app-users";
+import { getAppUserSummaryById, upsertAppUserFromOAuthIdentity } from "@/lib/app-users";
 
-const authSecret = process.env.NEXTAUTH_SECRET ?? (process.env.NODE_ENV === "development" ? "watcht-dev-secret-change-me" : undefined);
+const isDevelopment = process.env.NODE_ENV === "development";
+const localBypassEnabled = isDevelopment && process.env.AUTH_ENABLE_LOCAL_BYPASS !== "false";
+const authSecret = process.env.NEXTAUTH_SECRET ?? (isDevelopment ? "watcht-dev-secret-change-me" : undefined);
 
 const providers = [];
-const isDev = process.env.NODE_ENV === "development";
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
@@ -27,7 +28,7 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
   );
 }
 
-if (isDev) {
+if (localBypassEnabled) {
   providers.push(
     Credentials({
       name: "Local Dev",
@@ -106,9 +107,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.appUserId = typeof token.appUserId === "string" ? token.appUserId : undefined;
-        session.user.handle = typeof token.appHandle === "string" ? token.appHandle : undefined;
+      if (session.user && typeof token.appUserId === "string") {
+        session.user.appUserId = token.appUserId;
+
+        const appUser = await getAppUserSummaryById(token.appUserId);
+        if (appUser) {
+          session.user.handle = appUser.handle;
+          session.user.displayName = appUser.displayName ?? undefined;
+          session.user.isPrivate = appUser.isPrivate;
+          session.user.joinedAt = appUser.joinedAt?.toISOString() ?? undefined;
+        } else {
+          session.user.handle = typeof token.appHandle === "string" ? token.appHandle : undefined;
+        }
       }
 
       return session;

@@ -6,7 +6,8 @@ const navItems = [{ href: "/dashboard", label: "Dashboard" }];
 export default async function SiteHeader() {
   const session = await auth();
   const isAuthenticated = Boolean(session?.user);
-  const userLabel = session?.user?.name ?? session?.user?.email ?? "Account";
+  const userLabel = session?.user?.handle ? `@${session.user.handle}` : session?.user?.name ?? session?.user?.email ?? "Account";
+  const privacyLabel = session?.user?.isPrivate === false ? "public" : "private";
 
   async function handleSignOut() {
     "use server";
@@ -28,8 +29,15 @@ export default async function SiteHeader() {
           ))}
           {isAuthenticated ? (
             <>
-              <span className="max-w-40 truncate text-slate-200" title={userLabel}>
-                {userLabel}
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
+                <span className="max-w-40 truncate" title={userLabel}>
+                  {userLabel}
+                </span>
+                {session?.user?.isPrivate !== undefined ? (
+                  <span className="rounded-full border border-amber-400/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-200">
+                    {privacyLabel}
+                  </span>
+                ) : null}
               </span>
               <form action={handleSignOut}>
                 <button type="submit" className="transition hover:text-white">
