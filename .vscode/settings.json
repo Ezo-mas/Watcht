@@ -1,7 +1,0 @@
-{
-	"files.associations": {
-		"*.css": "tailwindcss"
-	},
-	"eslint.workingDirectories": ["web"],
-	"prettier.prettierPath": "web/node_modules/prettier"
-}

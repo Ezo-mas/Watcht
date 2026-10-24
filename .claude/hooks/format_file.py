@@ -1,8 +1,7 @@
 """PostToolUse hook: format the file Claude just edited or wrote.
 
-Go files go through ``gofmt``; files under ``web/`` go through prettier, the same
-scope ``make lint-web`` checks (prettier skips what web/.prettierignore lists).
-Other files are left alone. Prettier comes from the
+Go files go through ``gofmt``; ``web/src`` files go through prettier, the same
+scopes as ``make lint``. Other files are left alone. Prettier comes from the
 checkout's ``web/node_modules``, falling back to the main checkout
 (``CLAUDE_PROJECT_DIR``) because worktrees don't have it. A missing tool is not
 an error: the hook stays silent and the normal checks still catch formatting.
@@ -19,8 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PRETTIER_SUFFIXES = {".ts", ".js", ".mjs", ".cjs", ".svelte", ".css", ".json", ".html", ".md", ".yaml", ".yml"}
-PRETTIER_SKIP_DIRS = {"node_modules", ".svelte-kit", "build"}
+PRETTIER_SUFFIXES = {".ts", ".js", ".svelte", ".css", ".json", ".html"}
 TIMEOUT_S = 20
 
 
@@ -59,11 +57,7 @@ def _command(path: Path, root: Path) -> tuple[list[str], Path] | None:
             return None
         gofmt = shutil.which("gofmt")
         return ([gofmt, "-w", str(path)], root) if gofmt else None
-    if (
-        rel.parts[:1] == ("web",)
-        and path.suffix in PRETTIER_SUFFIXES
-        and not PRETTIER_SKIP_DIRS.intersection(rel.parts[1:])
-    ):
+    if rel.parts[:2] == ("web", "src") and path.suffix in PRETTIER_SUFFIXES:
         prettier = _prettier(root)
         if prettier is None:
             return None

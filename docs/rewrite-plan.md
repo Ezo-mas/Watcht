@@ -49,7 +49,7 @@ Local builds and CI must use the same tool versions:
 - **Go:** the `go` and `toolchain` lines in `go.mod`, and CI reads the version from `go.mod`. Go downloads the pinned toolchain automatically, except where a distro sets `GOTOOLCHAIN=local` (Fedora does). So the Makefile exports `GOTOOLCHAIN=auto`, and every `make` target uses the pinned toolchain whatever Go is installed.
 - **Go tools:** `sqlc` and `goose` pinned as `tool` directives in `go.mod` and run with `go tool sqlc` / `go tool goose`, so no global installs are needed.
 - **golangci-lint:** version pinned in one place (`.golangci-version`). The Makefile runs it with `go run` at that version, and CI runs `make check`, so both use the same one.
-- **Node and pnpm:** `.node-version` for Node (the major version, `24`, since distro packages and CI patch levels differ; CI reads it with `node-version-file`), `packageManager` in `web/package.json` for pnpm (Corepack locally, `pnpm/action-setup` in CI; both read that pin), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
+- **Node and pnpm:** `.node-version` for Node (the major version, `24`, since distro packages and CI patch levels differ; CI reads it with `node-version-file`), `packageManager` in `web/package.json` for pnpm (via Corepack), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
 - **CI actions** pinned to exact versions.
 - **Docker base images** pinned by digest.
 
@@ -223,7 +223,7 @@ TMDB's terms require attribution. The app footer and an About page show the TMDB
 
 ## Development workflow
 
-- `make dev`: runs the Go server on `:8090` and Vite on `:5173`; Vite proxies `/api` to Go. Port 8090 keeps dev away from a real instance on 8080.
+- `make dev`: runs the Go server on `:8080` and Vite on `:5173`; Vite proxies `/api` to Go.
 - `make generate`: runs `sqlc generate`.
 - `make build`: builds the web app, then a Go binary that embeds it.
 - `make test`: `go test ./...` and the web tests.
