@@ -29,12 +29,18 @@ COPY --from=web /src/web/build ./internal/webui/dist
 ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/watcht ./cmd/watcht
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/watcht ./cmd/watcht \
+    && mkdir -p /out/data
 
 # --- Runtime ---
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 COPY --from=server /out/watcht /usr/local/bin/watcht
-ENV WATCHT_LISTEN=:8080
+# Owned by nonroot so a named volume mounted here starts out writable. A bind
+# mount keeps the host directory's owner: set `user:` to match it.
+COPY --from=server --chown=65532:65532 /out/data /data
+ENV WATCHT_LISTEN=:8080 \
+    WATCHT_DATA_DIR=/data
+VOLUME ["/data"]
 EXPOSE 8080
 # distroless's nonroot user (UID/GID 65532). Override with `user:` in compose
 # to match the owner of a mounted data directory.

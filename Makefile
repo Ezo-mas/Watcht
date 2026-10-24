@@ -23,6 +23,9 @@ DIST := internal/webui/dist
 # a real instance running on the same machine.
 DEV_API_PORT ?= 8090
 
+# Local data directory for `make run` and `make dev` (gitignored).
+DATA_DIR ?= ./data
+
 IMAGE ?= watcht:local
 
 .PHONY: help build build-go run dev smoke docker docker-smoke test test-go test-web \
@@ -51,12 +54,12 @@ web-install: node-version ## Install frontend dependencies from the lockfile
 
 # --- Run ---
 
-run: build ## Build everything and run the server on :8080
-	./bin/watcht serve
+run: build ## Build everything and run the server on :8080 with ./data
+	WATCHT_DATA_DIR=$(DATA_DIR) ./bin/watcht serve
 
 dev: web-install ## Go server on :$(DEV_API_PORT) and Vite on :5173 (open :5173)
 	go build -o bin/watcht-dev ./cmd/watcht
-	@export WATCHT_LISTEN=127.0.0.1:$(DEV_API_PORT); \
+	@export WATCHT_LISTEN=127.0.0.1:$(DEV_API_PORT) WATCHT_DATA_DIR=$(DATA_DIR); \
 	./bin/watcht-dev serve & pid=$$!; \
 	trap 'kill $$pid 2>/dev/null' EXIT; \
 	for _ in $$(seq 1 20); do ./bin/watcht-dev healthcheck 2>/dev/null && break; sleep 0.25; done; \
