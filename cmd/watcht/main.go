@@ -2,9 +2,10 @@
 //
 // Usage:
 //
-//	watcht [serve]      run the server (the default)
-//	watcht healthcheck  exit 0 if the local server's /healthz responds OK
-//	watcht version      print the version
+//	watcht [serve]        run the server (the default)
+//	watcht backup [FILE]  write a consistent snapshot of the database
+//	watcht healthcheck    exit 0 if the local server's /healthz responds OK
+//	watcht version        print the version
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/Ezo-mas/watcht/internal/config"
+	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/httpapi"
 	"github.com/Ezo-mas/watcht/internal/server"
 	"github.com/Ezo-mas/watcht/internal/webui"
@@ -37,6 +39,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch cmd {
 	case "serve":
 		return serve(stderr)
+	case "backup":
+		return backup(args[1:], stdout, stderr)
 	case "healthcheck":
 		return healthcheck(stderr)
 	case "version", "--version":
@@ -54,9 +58,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 const usage = `Usage: watcht [command]
 
 Commands:
-  serve        run the server (default)
-  healthcheck  check that the local server is healthy (for container health checks)
-  version      print the version
+  serve          run the server (default)
+  backup [FILE]  write a consistent snapshot of the database to FILE, or to
+                 a timestamped file in the data directory's backups/ folder;
+                 safe while the server is running
+  healthcheck    check that the local server is healthy (for container health checks)
+  version        print the version
 `
 
 func serve(stderr io.Writer) int {
@@ -77,16 +84,46 @@ func serve(stderr io.Writer) int {
 		stop()
 	}()
 
+	logger.Info("starting watcht", "version", version, "data_dir", cfg.DataDir)
+	database, err := openDatabase(ctx, cfg, logger)
+	if err != nil {
+		logger.Error("database unavailable", "err", err)
+		return 1
+	}
+
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Logger: logger,
 		WebUI:  webui.Handler(webui.Dist()),
+		Health: database.Ping,
 	})
-	logger.Info("starting watcht", "version", version)
+	code := 0
 	if err := server.Run(ctx, cfg.Listen, handler, logger); err != nil {
 		logger.Error("server stopped", "err", err)
-		return 1
+		code = 1
 	}
-	return 0
+	// After the HTTP server has drained, so no request still uses it.
+	if err := database.Close(); err != nil {
+		logger.Error("close database", "err", err)
+		code = 1
+	}
+	return code
+}
+
+// openDatabase prepares the data directory, opens the database, and applies
+// pending migrations (backing up first when there's existing data).
+func openDatabase(ctx context.Context, cfg config.Config, logger *slog.Logger) (*db.DB, error) {
+	if err := cfg.EnsureDataDir(); err != nil {
+		return nil, err
+	}
+	database, err := db.Open(ctx, cfg.DatabasePath())
+	if err != nil {
+		return nil, err
+	}
+	if err := database.Migrate(ctx, db.MigrateOptions{BackupDir: cfg.BackupDir(), Logger: logger}); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	return database, nil
 }
 
 func healthcheck(stderr io.Writer) int {

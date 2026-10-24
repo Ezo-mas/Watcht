@@ -3,11 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Ezo-mas/watcht/internal/db"
 )
 
 func TestHealthURL(t *testing.T) {
@@ -110,5 +116,58 @@ func TestRunCommands(t *testing.T) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), tt.wantStderr)
 			}
 		})
+	}
+}
+
+func TestBackupCommand(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("WATCHT_DATA_DIR", dataDir)
+
+	// No database yet: refuse instead of creating an empty one.
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"backup"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("backup without a database: exit %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "no database") {
+		t.Errorf("stderr = %q, want a 'no database' message", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "watcht.db")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("backup created a database file: %v", err)
+	}
+
+	d, err := db.Open(context.Background(), filepath.Join(dataDir, "watcht.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Write.Exec("CREATE TABLE t (x INTEGER) STRICT; INSERT INTO t VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.Close()
+
+	// Default destination: a timestamped file under backups/.
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"backup"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("backup: exit %d, stderr %q", code, stderr.String())
+	}
+	dest := strings.TrimSpace(stdout.String())
+	if filepath.Dir(dest) != filepath.Join(dataDir, "backups") || !strings.HasPrefix(filepath.Base(dest), "manual-") {
+		t.Errorf("backup path = %q, want manual-*.db in %s/backups", dest, dataDir)
+	}
+	if _, err := os.Stat(dest); err != nil {
+		t.Errorf("backup file: %v", err)
+	}
+
+	// Explicit destination, and refusing to overwrite it.
+	custom := filepath.Join(t.TempDir(), "snap.db")
+	if code := run([]string{"backup", custom}, &stdout, &stderr); code != 0 {
+		t.Fatalf("backup %s: exit %d, stderr %q", custom, code, stderr.String())
+	}
+	if code := run([]string{"backup", custom}, &stdout, &stderr); code != 1 {
+		t.Errorf("backup over an existing file: exit %d, want 1", code)
+	}
+
+	if code := run([]string{"backup", "a", "b"}, &stdout, &stderr); code != 2 {
+		t.Errorf("backup with two arguments: exit %d, want 2", code)
 	}
 }

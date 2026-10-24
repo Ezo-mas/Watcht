@@ -24,10 +24,10 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-          # No go.sum yet; key the cache on go.mod and the pinned
-          # golangci-lint version so its go run build is cached.
+          # Also key on the pinned golangci-lint version so its go run
+          # build is cached.
           cache-dependency-path: |
-            go.mod
+            go.sum
             .golangci-version
 
       - name: Check
@@ -69,7 +69,7 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.mod
+          cache-dependency-path: go.sum
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6.1.0

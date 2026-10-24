@@ -95,12 +95,13 @@ sqlc.yaml
 
 ### SQLite setup
 
-Applied on every connection:
+Connection settings:
 
-- `journal_mode=WAL`: readers don't block the writer
-- `foreign_keys=ON`: SQLite has them off by default
-- `busy_timeout=5000`: wait instead of failing when the writer is busy
-- `synchronous=NORMAL`: safe with WAL and much faster
+- `journal_mode=WAL`: readers don't block the writer. Set by the write pool; it's stored in the file, so readers get it too. `Open` fails if the switch didn't happen.
+- `foreign_keys=ON`: SQLite has them off by default. Every connection.
+- `busy_timeout=5000`: wait instead of failing when the writer is busy. Every connection.
+- `synchronous=NORMAL`: safe with WAL and much faster. Write pool (it has no effect on reads).
+- `query_only=ON` on the read pool, so a write there fails.
 
 Use two `*sql.DB` handles: a write pool limited to one connection, and a read pool with several. This avoids `SQLITE_BUSY` errors entirely.
 
@@ -113,7 +114,9 @@ Use two `*sql.DB` handles: a write pool limited to one connection, and a read po
 - Tables are `STRICT` so SQLite enforces column types.
 - Integer primary keys everywhere; user-facing IDs are the same integers (this is a single-household app, so there's no need to hide them).
 
-### Tables (v1)
+### Tables
+
+**Tables arrive with the feature that needs them** (maintainer decision, 2026-10-24): no table is created ahead of time, and each milestone adds only what its features use. The list below is the expected end state, not M1's schema.
 
 Accounts:
 
@@ -295,14 +298,16 @@ Each milestone ends with something runnable and is merged to `main` before the n
 
 ### M1: Database
 
-- SQLite open with pragmas and read/write pools, goose migrations, sqlc setup, FTS5 index.
+- SQLite open with pragmas and read/write pools, goose migrations, sqlc setup.
 - Backup-before-migrate and the `watcht backup` command (`VACUUM INTO`).
-- v1 schema for accounts, catalog, tracking, and system tables.
+- `WATCHT_DATA_DIR` and the image's `/data` volume.
+- A minimal first migration, just enough to prove the sqlc setup. Feature tables come with their milestones: accounts in M2, catalog, `provider_cache`, and `jobs` in M3, tracking tables and the FTS5 index in M4, `import_runs` in M5.
 - Test helper that creates a migrated temp database.
 - **Done when:** migrations apply on startup and a sample query is tested.
 
 ### M2: Auth
 
+- Tables: `users`, `sessions`, `api_tokens`, `user_settings`.
 - First-run setup, login, logout, sessions, CSRF check, login rate limit.
 - Admin user management, API tokens.
 - Svelte `/setup`, `/login`, and an authenticated layout.
@@ -310,6 +315,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 
 ### M3: Catalog and TMDB
 
+- Tables: `movies`, `shows`, `seasons`, `episodes`, `provider_cache`, `jobs`.
 - TMDB provider with caching and rate limiting; search and detail endpoints.
 - Upsert movies, shows, seasons, and episodes by external ID, with episodes anchored on TMDB episode ID.
 - TMDB attribution in the footer and About page; optional image cache.
@@ -318,6 +324,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 
 ### M4: Tracking parity
 
+- Tables: `watch_events`, `watchlist_items`, `ratings`, and the `catalog_fts` index.
 - Watch events with source and dedupe, episode and season marking, history feed.
 - Watchlist, ratings, show progress.
 - Dashboard with widgets and saved block order, with day-based stats in the user's time zone.

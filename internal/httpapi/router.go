@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,7 +16,12 @@ type Deps struct {
 	// WebUI serves the single-page app for every path that isn't an API
 	// route or the health check.
 	WebUI http.Handler
+	// Health reports whether the server's dependencies (the database) work.
+	// Nil means always healthy.
+	Health func(context.Context) error
 }
+
+const healthTimeout = 2 * time.Second
 
 // NewRouter returns the root handler for the server.
 func NewRouter(d Deps) http.Handler {
@@ -23,7 +29,7 @@ func NewRouter(d Deps) http.Handler {
 
 	// Registered without a method so other methods get 405 here instead of
 	// falling through to the SPA's catch-all route.
-	mux.HandleFunc("/healthz", handleHealthz)
+	mux.HandleFunc("/healthz", healthzHandler(d.Logger, d.Health))
 
 	// Unknown API paths get a JSON 404 instead of falling through to the
 	// SPA, so API clients never receive index.html. Because this pattern
@@ -38,13 +44,25 @@ func NewRouter(d Deps) http.Handler {
 	return logRequests(d.Logger, mux)
 }
 
-func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
-		return
+func healthzHandler(logger *slog.Logger, health func(context.Context) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
+			return
+		}
+		if health != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+			defer cancel()
+			if err := health(ctx); err != nil {
+				// The cause goes to the log, not to the unauthenticated client.
+				logger.Error("health check failed", "err", err)
+				writeError(w, http.StatusServiceUnavailable, "unhealthy", "a dependency is not working; see the server log")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // logRequests logs one line per request. It logs the path only, never the

@@ -14,10 +14,11 @@ else
 	bin=${1:-bin/watcht}
 	port=${2:-18080}
 	base="http://127.0.0.1:$port"
-	export WATCHT_LISTEN="127.0.0.1:$port"
-	"$bin" serve >/dev/null 2>&1 &
+	data=$(mktemp -d)
+	export WATCHT_LISTEN="127.0.0.1:$port" WATCHT_DATA_DIR="$data"
+	"$bin" serve >"$data/server.log" 2>&1 &
 	pid=$!
-	trap 'kill "$pid" 2>/dev/null || true' EXIT
+	trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$data"' EXIT
 	for _ in $(seq 1 40); do
 		"$bin" healthcheck 2>/dev/null && break
 		sleep 0.25
@@ -26,6 +27,10 @@ fi
 
 fail() {
 	echo "smoke: $*" >&2
+	if [[ -n ${data:-} && -f $data/server.log ]]; then
+		echo "--- server log ---" >&2
+		cat "$data/server.log" >&2
+	fi
 	exit 1
 }
 
