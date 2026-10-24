@@ -23,8 +23,10 @@ DIST := internal/webui/dist
 # a real instance running on the same machine.
 DEV_API_PORT ?= 8090
 
-.PHONY: help build build-go run dev smoke test test-go test-web lint lint-go lint-web \
-	check check-go check-web web-install web-build node-version clean
+IMAGE ?= watcht:local
+
+.PHONY: help build build-go run dev smoke docker docker-smoke test test-go test-web \
+	lint lint-go lint-web check check-go check-web web-install web-build node-version clean
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -73,6 +75,14 @@ check-web: lint-web test-web ## Web lint, type check, tests, and build
 
 smoke: build ## Build, start the binary, and check health and the embedded SPA
 	scripts/smoke.sh bin/watcht
+
+# The image build needs Docker, so it isn't part of `make check`; CI runs it
+# as its own job.
+docker: ## Build the container image ($(IMAGE))
+	docker build -t $(IMAGE) --build-arg VERSION=$(VERSION) .
+
+docker-smoke: docker ## Build the image, run it, and check health, user, and the SPA
+	scripts/docker-smoke.sh $(IMAGE)
 
 lint: lint-go lint-web ## All linters
 
