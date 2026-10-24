@@ -1,3 +1,3 @@
-# allow crawling everything by default
+# watcht is a private, self-hosted app.
 User-agent: *
-Disallow:
+Disallow: /
