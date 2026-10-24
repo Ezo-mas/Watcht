@@ -1,45 +1,28 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
+# Go build output
+/bin/
+/dist/
+*.test
+coverage.out
 
-# next
-/.next/
-/out/
+# Web
+/web/node_modules/
+/web/.svelte-kit/
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
+/web/test-results/
+/web/playwright-report/
 
-# production
-/build
-
-# logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# environment files
+# Local data and environment
+/data/
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 !.env.example
 
-# misc
+# Editors and OS
 .DS_Store
-*.pem
+*.log
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# local planning/instructions
-.github/copilot-instructions.md
-.github/project-plan.md
-/localFiles
 # Claude Code local state
 .claude/settings.local.json
 .claude/worktrees/
+/.playwright-mcp/
