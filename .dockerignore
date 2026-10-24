@@ -1,0 +1,11 @@
+# Only what the image build needs; everything else stays out of the context.
+*
+!go.mod
+!cmd/
+!internal/
+!web/
+internal/webui/dist/*
+web/node_modules/
+web/build/
+web/.svelte-kit/
+**/*_test.go
