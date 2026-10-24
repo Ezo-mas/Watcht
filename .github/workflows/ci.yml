@@ -24,6 +24,11 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
+          # No go.sum yet; key the cache on go.mod and the pinned
+          # golangci-lint version so its go run build is cached.
+          cache-dependency-path: |
+            go.mod
+            .golangci-version
 
       - name: Check
         run: make check

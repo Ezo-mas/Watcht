@@ -47,7 +47,16 @@ tracking, auth, jobs, or the API shape.
    package.
 3. Return errors through the shared error helper so the shape stays
    consistent.
+   The `/api/` catch-all matches every API path, so the mux never sends
+   its own 405: a request with the wrong method for a registered route
+   falls through to the catch-all's 404. When adding the first routes,
+   give the API a method-aware fallback that returns 405 with an `Allow`
+   header in the standard error shape, and test a wrong-method request.
 4. Add an `httptest` test against the real router and a temporary database.
+   Server-wide timeouts (`internal/server`) are 30s read and 60s write.
+   Long uploads or streaming responses (importers, exports) extend their
+   own deadlines with `http.ResponseController`, not by raising the
+   server-wide values.
 5. Add or update the matching TypeScript types in `web/src/lib/api/`.
 
 ## Adding a provider or importer

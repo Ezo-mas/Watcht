@@ -13,6 +13,10 @@ coverage.out
 /web/test-results/
 /web/playwright-report/
 
+# Keys and certificates
+*.pem
+*.key
+
 # Local data and environment
 /data/
 .env

@@ -51,10 +51,10 @@ its code line by line.
 
 Before reporting done:
 
-- Run `make check` from the repository root. It runs everything CI runs:
-  Go vet, golangci-lint, Go tests, the sqlc diff check, and the web lint,
-  type check, and tests. While iterating, run only the touched package
-  (`go test ./internal/tracking/...`) and run `make check` once at the end.
+- Run `make check` from the repository root. It runs everything CI runs
+  (the [testing guide](docs/agent-guides/testing.md) lists what that is
+  today). While iterating, run only the touched package
+  (`go test ./internal/httpapi/...`) and run `make check` once at the end.
 - **Schema changes:** add a new migration file, run `make generate`, and
   include the regenerated sqlc code. Never hand-edit `internal/db/sqlc/`.
 - **Security-sensitive changes** (the list in `SECURITY.md`): a security

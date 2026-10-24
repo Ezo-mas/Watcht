@@ -57,7 +57,8 @@ themselves. `catalog` and `tracking` decide what gets stored.
    any of this.
 10. **HTTP API.** Routes under `/api/v1`, JSON only, one error shape.
     Anything not under `/api/`, `/healthz`, or a built asset returns the
-    SPA's `index.html`.
+    SPA's `index.html`, except missing files under `/_app/`, which 404 so
+    a stale tab never receives HTML as JavaScript.
 
 ## Known pitfalls
 
