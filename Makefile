@@ -28,7 +28,7 @@ DATA_DIR ?= ./data
 
 IMAGE ?= watcht:local
 
-.PHONY: help build build-go run dev smoke docker docker-smoke test test-go test-web \
+.PHONY: help build build-go run dev smoke docker docker-smoke tidy-check test test-go test-web \
 	lint lint-go lint-web check check-go check-web web-install web-build node-version clean
 
 help: ## List the targets
@@ -71,7 +71,10 @@ dev: web-install ## Go server on :$(DEV_API_PORT) and Vite on :5173 (open :5173)
 
 check: check-go check-web smoke ## Everything CI runs
 
-check-go: lint-go test-go ## Go lint and tests
+check-go: tidy-check lint-go test-go ## go.mod tidiness, Go lint, and tests
+
+tidy-check: ## Fail if go.mod or go.sum need go mod tidy
+	@go mod tidy -diff >/dev/null || { echo "go.mod/go.sum are not tidy: run 'go mod tidy'." >&2; exit 1; }
 
 check-web: lint-web test-web ## Web lint, type check, tests, and build
 	$(PNPM) build

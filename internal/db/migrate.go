@@ -68,16 +68,22 @@ func (d *DB) Migrate(ctx context.Context, opts MigrateOptions) error {
 		return fmt.Errorf("load migrations: %w", err)
 	}
 
+	// HasPending also creates goose's version table on a fresh database.
 	pending, err := p.HasPending(ctx)
 	if err != nil {
 		return fmt.Errorf("check pending migrations: %w", err)
 	}
-	if !pending {
-		return nil
-	}
 	current, err := p.GetDBVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("read schema version: %w", err)
+	}
+	// Downgrades aren't supported: an older binary must not write to a
+	// newer schema. goose reports nothing pending in that case, so check.
+	if latest := latestVersion(p); current > latest {
+		return fmt.Errorf("the database schema is version %d, but this watcht only knows up to version %d; run the newer watcht, or restore the pre-migrate backup in %s", current, latest, backupHint(opts.BackupDir))
+	}
+	if !pending {
+		return nil
 	}
 
 	var backup string
@@ -102,4 +108,19 @@ func (d *DB) Migrate(ctx context.Context, opts MigrateOptions) error {
 		return fmt.Errorf("migrate from version %d: %w", current, err)
 	}
 	return nil
+}
+
+func latestVersion(p *goose.Provider) int64 {
+	var latest int64
+	for _, s := range p.ListSources() {
+		latest = max(latest, s.Version)
+	}
+	return latest
+}
+
+func backupHint(dir string) string {
+	if dir == "" {
+		return "the backups directory"
+	}
+	return dir
 }

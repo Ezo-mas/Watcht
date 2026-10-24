@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"runtime"
@@ -37,6 +38,10 @@ type DB struct {
 // Open opens (creating if needed) the database at path and applies the
 // required connection settings. It does not run migrations; call Migrate.
 func Open(ctx context.Context, path string) (*DB, error) {
+	if err := preparePrivateFiles(path); err != nil {
+		return nil, err
+	}
+
 	write, err := sql.Open("sqlite", dsn(path, writePragmas, "immediate"))
 	if err != nil {
 		return nil, fmt.Errorf("open write pool: %w", err)
@@ -52,12 +57,16 @@ func Open(ctx context.Context, path string) (*DB, error) {
 		_ = write.Close()
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	// Watch history is private. SQLite creates files with the umask
-	// (usually 0644) and gives the -wal and -shm files the database file's
-	// mode, so restricting it here covers all three.
-	if err := os.Chmod(path, 0o600); err != nil {
+	// SQLite reports a failed switch to WAL by returning the old mode, not
+	// an error. Without WAL, readers would block the writer.
+	var mode string
+	if err := write.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil {
 		_ = write.Close()
-		return nil, fmt.Errorf("restrict permissions on %s: %w", path, err)
+		return nil, fmt.Errorf("read journal mode: %w", err)
+	}
+	if mode != "wal" {
+		_ = write.Close()
+		return nil, fmt.Errorf("%s: journal mode is %q, want wal (is the data directory on a network filesystem?)", path, mode)
 	}
 
 	read, err := sql.Open("sqlite", dsn(path, readPragmas, ""))
@@ -80,11 +89,37 @@ func Open(ctx context.Context, path string) (*DB, error) {
 // Path returns the database file's path.
 func (d *DB) Path() string { return d.path }
 
-// Ping checks that the database answers a query. It is used by /healthz.
+// Ping checks that the database answers a query that reads the file (the
+// schema page), not just that a connection is open. It is used by /healthz.
 func (d *DB) Ping(ctx context.Context) error {
-	var one int
-	if err := d.Read.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {
+	var n int
+	if err := d.Read.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema").Scan(&n); err != nil {
 		return fmt.Errorf("ping database: %w", err)
+	}
+	return nil
+}
+
+// preparePrivateFiles makes sure the database and its -wal and -shm files
+// are readable only by their owner, before SQLite opens them: watch history
+// is private, and SQLite creates files with the umask (usually 0644). A new
+// database starts as an empty 0600 file (SQLite accepts that), and SQLite
+// gives new -wal/-shm files the database file's mode. Existing files, e.g.
+// a restored backup, are tightened in place.
+func preparePrivateFiles(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // path is built from WATCHT_DATA_DIR, never a request
+	if err == nil {
+		return f.Close()
+	}
+	if !errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(name, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			if errors.Is(err, fs.ErrPermission) {
+				return fmt.Errorf("%s belongs to another user (running as uid %d); in Docker, set `user:` to the data directory's owner: %w", name, os.Getuid(), err)
+			}
+			return fmt.Errorf("restrict permissions on %s: %w", name, err)
+		}
 	}
 	return nil
 }

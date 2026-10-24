@@ -188,6 +188,43 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 	}
 }
 
+func TestOpenTightensExistingFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watcht.db")
+	// An existing database, e.g. restored with cp, with world-readable
+	// files, including WAL files left by a crash.
+	d, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Write.Exec("CREATE TABLE t (x INTEGER) STRICT"); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.Close()
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.WriteFile(name, nil, 0o644); err != nil && name != path {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(name, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	d, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open existing: %v", err)
+	}
+	defer func() { _ = d.Close() }()
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		info, err := os.Stat(name)
+		if err != nil {
+			t.Fatalf("stat %s: %v", name, err)
+		}
+		if mode := info.Mode().Perm(); mode&0o077 != 0 {
+			t.Errorf("%s mode = %o after Open, want no group or other access", filepath.Base(name), mode)
+		}
+	}
+}
+
 func TestPathWithSpecialCharacters(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "my data #1 ?x=y")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -319,6 +356,59 @@ func TestMigrateFailureNamesBackup(t *testing.T) {
 	b := backups(t, dir)
 	if len(b) != 1 || !strings.Contains(err.Error(), b[0]) {
 		t.Errorf("error %q should name the backup %v", err, b)
+	}
+}
+
+func TestMigrateRefusesNewerSchema(t *testing.T) {
+	d := openTemp(t)
+	ctx := context.Background()
+	if err := d.Migrate(ctx, MigrateOptions{Migrations: testMigrations}); err != nil {
+		t.Fatal(err)
+	}
+	// An older binary that only knows migration 1.
+	older := fstest.MapFS{"00001_one.sql": testMigrations["00001_one.sql"]}
+	err := d.Migrate(ctx, MigrateOptions{Migrations: older, BackupDir: "/data/backups"})
+	if err == nil {
+		t.Fatal("Migrate with a schema newer than the migrations = nil, want error")
+	}
+	for _, want := range []string{"version 2", "up to version 1", "/data/backups"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
+		}
+	}
+}
+
+func TestMigrateStopsWhenBackupFails(t *testing.T) {
+	d := openTemp(t)
+	ctx := context.Background()
+	first := fstest.MapFS{"00001_one.sql": testMigrations["00001_one.sql"]}
+	if err := d.Migrate(ctx, MigrateOptions{Migrations: first}); err != nil {
+		t.Fatal(err)
+	}
+	// The backup directory can't be created: a regular file is in the way.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := d.Migrate(ctx, MigrateOptions{Migrations: testMigrations, BackupDir: filepath.Join(blocker, "backups")})
+	if err == nil {
+		t.Fatal("Migrate with a failing backup = nil, want error")
+	}
+	if tableExists(t, d, "two") {
+		t.Error("migration 2 ran even though the backup failed")
+	}
+}
+
+func TestFailedBackupLeavesNoFile(t *testing.T) {
+	d := openTemp(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	dest := filepath.Join(t.TempDir(), "snap.db")
+	if err := d.Backup(ctx, dest); err == nil {
+		t.Fatal("Backup with a cancelled context = nil, want error")
+	}
+	if _, err := os.Stat(dest); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("failed backup left %s behind (stat err %v)", dest, err)
 	}
 }
 
