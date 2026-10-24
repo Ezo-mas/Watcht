@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+const devApi = process.env.WATCHT_DEV_API ?? 'http://127.0.0.1:8090';
+
 export default defineConfig({
 	plugins: [
 		tailwindcss(),
@@ -17,10 +19,11 @@ export default defineConfig({
 		})
 	],
 	server: {
-		// In development, the Go server on :8080 handles the API and health check.
+		// In development, the Go server handles the API and health check.
+		// `make dev` runs it on :8090 and sets WATCHT_DEV_API.
 		proxy: {
-			'/api': 'http://127.0.0.1:8080',
-			'/healthz': 'http://127.0.0.1:8080'
+			'/api': devApi,
+			'/healthz': devApi
 		}
 	},
 	test: {

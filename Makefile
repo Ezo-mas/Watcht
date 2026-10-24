@@ -19,7 +19,11 @@ PNPM := cd web && pnpm
 # The frontend build is copied here and embedded by internal/webui.
 DIST := internal/webui/dist
 
-.PHONY: help build build-go run dev test test-go test-web lint lint-go lint-web \
+# Port for the Go server under `make dev`. Not 8080, so dev never talks to
+# a real instance running on the same machine.
+DEV_API_PORT ?= 8090
+
+.PHONY: help build build-go run dev smoke test test-go test-web lint lint-go lint-web \
 	check check-go check-web web-install web-build node-version clean
 
 help: ## List the targets
@@ -27,7 +31,10 @@ help: ## List the targets
 
 # --- Build ---
 
-build: web-build build-go ## Build the frontend, then bin/watcht with it embedded
+build: web-build ## Build the frontend, then bin/watcht with it embedded
+	@# Sequential on purpose: with make -j, prerequisites would race and
+	@# embed a missing or stale frontend.
+	$(MAKE) build-go
 
 build-go: ## Build bin/watcht with whatever is in internal/webui/dist
 	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/watcht ./cmd/watcht
@@ -45,18 +52,27 @@ web-install: node-version ## Install frontend dependencies from the lockfile
 run: build ## Build everything and run the server on :8080
 	./bin/watcht serve
 
-dev: web-install ## Go server on :8080 and Vite on :5173 (open :5173)
-	@trap 'kill 0' EXIT; \
-	go run ./cmd/watcht serve & \
-	$(PNPM) dev
+dev: web-install ## Go server on :$(DEV_API_PORT) and Vite on :5173 (open :5173)
+	go build -o bin/watcht-dev ./cmd/watcht
+	@export WATCHT_LISTEN=127.0.0.1:$(DEV_API_PORT); \
+	./bin/watcht-dev serve & pid=$$!; \
+	trap 'kill $$pid 2>/dev/null' EXIT; \
+	for _ in $$(seq 1 20); do ./bin/watcht-dev healthcheck 2>/dev/null && break; sleep 0.25; done; \
+	./bin/watcht-dev healthcheck && kill -0 $$pid 2>/dev/null || \
+		{ echo "The Go server didn't start on :$(DEV_API_PORT) (port in use? set DEV_API_PORT)." >&2; exit 1; }; \
+	cd web && WATCHT_DEV_API=http://127.0.0.1:$(DEV_API_PORT) pnpm dev
 
 # --- Checks ---
 
-check: check-go check-web ## Everything CI runs
+check: check-go check-web smoke ## Everything CI runs
 
 check-go: lint-go test-go ## Go lint and tests
 
-check-web: lint-web test-web ## Web lint, type check, and tests
+check-web: lint-web test-web ## Web lint, type check, tests, and build
+	$(PNPM) build
+
+smoke: build ## Build, start the binary, and check health and the embedded SPA
+	scripts/smoke.sh bin/watcht
 
 lint: lint-go lint-web ## All linters
 
