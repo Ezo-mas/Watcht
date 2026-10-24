@@ -52,8 +52,8 @@ its code line by line.
 Before reporting done:
 
 - Run `make check` from the repository root. It runs everything CI runs
-  (the [testing guide](docs/agent-guides/testing.md) lists what that is
-  today). While iterating, run only the touched package
+  except the Docker job (the [testing guide](docs/agent-guides/testing.md)
+  lists what that is today). While iterating, run only the touched package
   (`go test ./internal/httpapi/...`) and run `make check` once at the end.
 - **Docker changes** (`Dockerfile`, `.dockerignore`, or anything that
   changes what the image copies): also run `make docker-smoke`, which
