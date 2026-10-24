@@ -17,7 +17,9 @@ make dev           # Go on :8090 and Vite on :5173 with hot reload
 make help          # list all targets
 ```
 
-`make generate` (sqlc) arrives with the database in M1. CI runs
+`make generate` regenerates `internal/db/sqlc` after a migration or query
+change; `make check` fails if it's stale. It needs a C compiler (sqlc uses
+CGO; the binary doesn't). CI runs
 `check-go`, `check-web`, `smoke`, and the Docker build with
 `scripts/docker-smoke.sh` as separate jobs. `make check` runs all but the
 Docker job, which needs Docker locally: run `make docker-smoke` for

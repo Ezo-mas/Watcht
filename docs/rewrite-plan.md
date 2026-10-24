@@ -47,7 +47,7 @@ This is the plan for rewriting watcht from Next.js + PostgreSQL into a self-host
 Local builds and CI must use the same tool versions:
 
 - **Go:** the `go` and `toolchain` lines in `go.mod`, and CI reads the version from `go.mod`. Go downloads the pinned toolchain automatically, except where a distro sets `GOTOOLCHAIN=local` (Fedora does). So the Makefile exports `GOTOOLCHAIN=auto`, and every `make` target uses the pinned toolchain whatever Go is installed.
-- **Go tools:** `sqlc` and `goose` pinned as `tool` directives in `go.mod` and run with `go tool sqlc` / `go tool goose`, so no global installs are needed.
+- **Go tools:** goose is a library dependency (migrations are embedded and applied by the binary), so it has no CLI. sqlc is pinned in `.sqlc-version` and run with `go run` at that version, like golangci-lint, rather than as a `go.mod` tool directive: sqlc's large dependency tree would otherwise land in `go.mod` and the image build. sqlc needs CGO, so `make generate` needs a C compiler; the watcht binary stays CGO-free. No global installs either way.
 - **golangci-lint:** version pinned in one place (`.golangci-version`). The Makefile runs it with `go run` at that version, and CI runs `make check`, so both use the same one.
 - **Node and pnpm:** `.node-version` for Node (the major version, `24`, since distro packages and CI patch levels differ; CI reads it with `node-version-file`), `packageManager` in `web/package.json` for pnpm (Corepack locally, `pnpm/action-setup` in CI; both read that pin), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
 - **CI actions** pinned to exact versions.
@@ -304,6 +304,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - A minimal first migration, just enough to prove the sqlc setup. Feature tables come with their milestones: accounts in M2, catalog, `provider_cache`, and `jobs` in M3, tracking tables and the FTS5 index in M4, `import_runs` in M5.
 - Test helper that creates a migrated temp database.
 - **Done when:** migrations apply on startup and a sample query is tested.
+- **Status: done.** The first migration creates a minimal `users` table (ID, case-insensitive username, creation time), the columns M2's first-run setup needs; M2 adds the sign-in columns. `internal/db/queries_test.go` runs the generated queries against a migrated database, and the server applies migrations at startup (checked by the smoke tests).
 
 ### M2: Auth
 

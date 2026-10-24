@@ -15,3 +15,6 @@ Goose SQL migrations, embedded into the binary and applied at startup by
   `foreign_keys=ON`; a migration that turns it off must turn it back on.
 - Before v0.1.0 the baseline may be rewritten. From v0.1.0 on, never edit or
   delete a released file; add a new one.
+
+After changing a migration, run `make generate` and commit the regenerated
+`internal/db/sqlc` code.
