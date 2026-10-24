@@ -8,16 +8,17 @@ done"). This guide is the full command reference.
 ```bash
 make check       # everything CI runs; the definition of done
 make check-go    # go vet, golangci-lint, go test
-make check-web   # svelte-check, prettier, eslint, vitest
+make check-web   # svelte-check, prettier, eslint, vitest, vite build
+make smoke       # full build, then start the binary and check it
 make build       # frontend, then bin/watcht with it embedded
 make run         # build and run on :8080
-make dev         # Go on :8080 and Vite on :5173 with hot reload
+make dev         # Go on :8090 and Vite on :5173 with hot reload
 make help        # list all targets
 ```
 
 `make generate` (sqlc) arrives with the database in M1. CI runs
-`check-go`, `check-web`, and a full `make build` with a smoke test of the
-binary.
+`check-go`, `check-web`, and `smoke` as separate jobs; `make check` runs
+all three.
 
 While iterating:
 

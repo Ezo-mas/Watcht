@@ -35,9 +35,7 @@
           {
             "type": "command",
             "command": "python3",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/format_file.py"
-            ],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/format_file.py"],
             "timeout": 30
           }
         ]

@@ -28,14 +28,16 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
 
 ```bash
 pnpm install --frozen-lockfile   # permitted
-pnpm dev                         # Vite on :5173, proxies /api to Go on :8080
+pnpm dev                         # Vite on :5173, proxies /api to Go (WATCHT_DEV_API, default :8090)
 pnpm check                       # svelte-check
 pnpm lint                        # eslint + prettier --check
 pnpm test                        # vitest run
 pnpm build                       # output embedded by the Go build
 ```
 
-`make dev` from the repository root runs the Go server and Vite together.
+`make dev` from the repository root runs the Go server on :8090 (not
+8080, so it never talks to a real instance on the same machine) and Vite
+on :5173 together; open :5173.
 `make build` builds the frontend, copies `web/build/` into
 `internal/webui/dist/`, and embeds it in `bin/watcht`. Neither build
 directory is committed (only `dist/.gitkeep` is).
@@ -54,10 +56,11 @@ browser (the `watcht-designer` agent does this with the Playwright tools).
 2. Start it on a spare port (not 8080, which a real instance may use), in
    the background:
    `WATCHT_LISTEN=127.0.0.1:8099 ./bin/watcht serve &`
-   Wait until `WATCHT_LISTEN=127.0.0.1:8099 ./bin/watcht healthcheck`
-   exits 0.
+   and note the PID (`echo $!`); shell state doesn't persist between agent
+   commands, so `kill %1` won't work later. Wait until
+   `WATCHT_LISTEN=127.0.0.1:8099 ./bin/watcht healthcheck` exits 0.
 3. Open `http://127.0.0.1:8099/` in the browser tools and check the pages.
-4. Stop the server (`kill %1` or by PID) and delete any `.playwright-mcp/`
+4. Stop the server by PID and delete any `.playwright-mcp/`
    folder the browser tools left in the repository root.
 
 From M1 on, start the server with a throwaway data directory under `/tmp`
