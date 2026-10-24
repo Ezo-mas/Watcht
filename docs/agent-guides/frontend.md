@@ -36,20 +36,31 @@ pnpm build                       # output embedded by the Go build
 ```
 
 `make dev` from the repository root runs the Go server and Vite together.
-Don't commit `web/build/`; the Go build produces it.
+`make build` builds the frontend, copies `web/build/` into
+`internal/webui/dist/`, and embeds it in `bin/watcht`. Neither build
+directory is committed (only `dist/.gitkeep` is).
+
+Node must match `.node-version` (24); `make` stops with a clear message on
+another version. A version manager such as fnm switches automatically. In
+a non-interactive shell where it doesn't, prefix commands with
+`fnm exec --using=24 --`.
 
 ## Visual checks
 
 Layout bugs only show in a real render, so UI changes are checked in a
 browser (the `watcht-designer` agent does this with the Playwright tools).
-The exact commands are added in M0, once the server and Makefile exist.
-They will:
 
-1. Build the binary with the current frontend (`make build`).
-2. Start it on a spare port (not 8080, which a real instance may use) with
-   a throwaway data directory under `/tmp`, so no real data is touched.
-3. Seed a test user and sample data, using recorded fixtures rather than
-   live TMDB calls.
-4. Stop the server and delete the data directory afterwards.
+1. Build the binary with the current frontend: `make build`.
+2. Start it on a spare port (not 8080, which a real instance may use), in
+   the background:
+   `WATCHT_LISTEN=127.0.0.1:8099 ./bin/watcht serve &`
+   Wait until `WATCHT_LISTEN=127.0.0.1:8099 ./bin/watcht healthcheck`
+   exits 0.
+3. Open `http://127.0.0.1:8099/` in the browser tools and check the pages.
+4. Stop the server (`kill %1` or by PID) and delete any `.playwright-mcp/`
+   folder the browser tools left in the repository root.
 
-Until these steps exist, report visual checks as not done.
+From M1 on, start the server with a throwaway data directory under `/tmp`
+so no real data is touched; from M3 on, seed sample data from recorded
+fixtures rather than live TMDB calls. These steps will be added here when
+those milestones land.

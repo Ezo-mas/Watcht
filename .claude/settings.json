@@ -14,7 +14,8 @@
   "permissions": {
     "deny": [
       "Edit(/internal/db/sqlc/**)",
-      "Edit(/web/build/**)"
+      "Edit(/web/build/**)",
+      "Edit(/internal/webui/dist/**)"
     ],
     "ask": [
       "Edit(/LICENSE)",
@@ -34,7 +35,9 @@
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/format_file.py"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/format_file.py"
+            ],
             "timeout": 30
           }
         ]
