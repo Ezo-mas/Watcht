@@ -47,7 +47,7 @@ This is the plan for rewriting watcht from Next.js + PostgreSQL into a self-host
 Local builds and CI must use the same tool versions:
 
 - **Go:** the `go` and `toolchain` lines in `go.mod`, and CI reads the version from `go.mod`. Go downloads the pinned toolchain automatically, except where a distro sets `GOTOOLCHAIN=local` (Fedora does). So the Makefile exports `GOTOOLCHAIN=auto`, and every `make` target uses the pinned toolchain whatever Go is installed.
-- **Go tools:** goose is a library dependency (migrations are embedded and applied by the binary), so it has no CLI. sqlc is pinned in `.sqlc-version` and run with `go run` at that version, like golangci-lint, rather than as a `go.mod` tool directive: sqlc's large dependency tree would otherwise land in `go.mod` and the image build. sqlc needs CGO, so `make generate` needs a C compiler; the watcht binary stays CGO-free. No global installs either way.
+- **Go tools:** goose is a library dependency (migrations are embedded and applied by the binary), so it has no CLI. sqlc is pinned in `.sqlc-version` and run with `go run` at that version, like golangci-lint, rather than as a `go.mod` tool directive: sqlc's large dependency tree would otherwise land in `go.mod` and the image build. Built without CGO, sqlc uses WASM parsers, so no C compiler is needed. No global installs either way.
 - **golangci-lint:** version pinned in one place (`.golangci-version`). The Makefile runs it with `go run` at that version, and CI runs `make check`, so both use the same one.
 - **Node and pnpm:** `.node-version` for Node (the major version, `24`, since distro packages and CI patch levels differ; CI reads it with `node-version-file`), `packageManager` in `web/package.json` for pnpm (Corepack locally, `pnpm/action-setup` in CI; both read that pin), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
 - **CI actions** pinned to exact versions.
@@ -107,7 +107,7 @@ Use two `*sql.DB` handles: a write pool limited to one connection, and a read po
 
 ### Conventions
 
-- Timestamps stored as `TEXT` in UTC RFC 3339 (`2026-10-24T18:30:00Z`). They stay readable in the `sqlite3` CLI and sort correctly.
+- Timestamps stored as `TEXT` in UTC RFC 3339 with whole seconds (`2026-10-24T18:30:00Z`), always that exact layout so they sort correctly as strings. They stay readable in the `sqlite3` CLI. Go code formats them only with `db.Timestamp`, and each timestamp column has `CHECK (col IS strftime('%Y-%m-%dT%H:%M:%SZ', col))` (`IS`, not `=`, so a NULL from garbage input fails).
 - **Time zones:** everything is stored in UTC. Each user has a time zone setting (IANA name, e.g. `Europe/Vilnius`), and anything grouped by day ("watched today", streaks, stats per day or month) is computed in that zone.
 - JSON stored as `TEXT` and queried with SQLite's JSON functions when needed.
 - Enums are `TEXT` with a `CHECK` constraint.
@@ -301,10 +301,10 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - SQLite open with pragmas and read/write pools, goose migrations, sqlc setup.
 - Backup-before-migrate and the `watcht backup` command (`VACUUM INTO`).
 - `WATCHT_DATA_DIR` and the image's `/data` volume.
-- A minimal first migration, just enough to prove the sqlc setup. Feature tables come with their milestones: accounts in M2, catalog, `provider_cache`, and `jobs` in M3, tracking tables and the FTS5 index in M4, `import_runs` in M5.
+- A minimal first migration, just enough to prove the sqlc setup. Feature tables come with their milestones: the rest of the accounts tables (and the sign-in columns on `users`) in M2, catalog, `provider_cache`, and `jobs` in M3, tracking tables and the FTS5 index in M4, `import_runs` in M5.
 - Test helper that creates a migrated temp database.
 - **Done when:** migrations apply on startup and a sample query is tested.
-- **Status: done.** The first migration creates a minimal `users` table (ID, case-insensitive username, creation time), the columns M2's first-run setup needs; M2 adds the sign-in columns. `internal/db/queries_test.go` runs the generated queries against a migrated database, and the server applies migrations at startup (checked by the smoke tests).
+- **Status: done.** The first migration creates a minimal `users` table (ID, username, creation time), the columns M2's first-run setup needs; M2 adds the sign-in columns. Usernames are 1–64 ASCII letters, digits, `.`, `_` or `-`, unique ignoring case; ASCII-only makes SQLite's `NOCASE` complete and rules out look-alike names. `internal/db/queries_test.go` runs the generated queries against a migrated database. The server applies migrations at startup and won't start if one fails, so the smoke tests cover that indirectly.
 
 ### M2: Auth
 

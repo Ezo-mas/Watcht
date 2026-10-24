@@ -24,11 +24,12 @@ jobs:
         uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-          # Also key on the pinned golangci-lint version so its go run
-          # build is cached.
+          # Also key on the pinned tool versions so their go run builds
+          # are cached.
           cache-dependency-path: |
             go.sum
             .golangci-version
+            .sqlc-version
 
       - name: Check
         run: make check-go

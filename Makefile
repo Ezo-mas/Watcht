@@ -13,10 +13,10 @@ GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLA
 
 # sqlc runs through go run (like golangci-lint) rather than a go.mod tool
 # directive, which would add its large dependency tree to go.mod and the
-# image build. It needs CGO (it embeds a C parser), so it needs a C
-# compiler; the binary itself stays CGO-free.
+# image build. Built without CGO it uses WASM parsers, so no C compiler is
+# needed.
 SQLC_VERSION := $(shell cat .sqlc-version)
-SQLC := CGO_ENABLED=1 go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+SQLC := go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
 VERSION ?= $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
