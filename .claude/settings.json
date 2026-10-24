@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": false,
+    "frontend-design@anthropic-plugin-directory": true
+  },
+  "skillOverrides": {
+    "claude-api": "off",
+    "plugin-authoring": "off",
+    "dataviz": "name-only"
+  },
+  "permissions": {
+    "deny": [
+      "Edit(/internal/db/sqlc/**)",
+      "Edit(/web/build/**)"
+    ],
+    "ask": [
+      "Edit(/LICENSE)",
+      "Edit(/go.mod)",
+      "Edit(/web/package.json)",
+      "Edit(/.node-version)",
+      "Edit(/.golangci-version)",
+      "Bash(git push *)",
+      "Bash(git tag *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/format_file.py"],
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

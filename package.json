@@ -1,6 +1,7 @@
 {
   "name": "watcht",
   "version": "0.1.0",
+  "description": "Self-hosted film and TV tracker that keeps your watch history in a SQLite file you own",
   "private": true,
   "packageManager": "pnpm@9.12.2",
   "scripts": {
