@@ -11,14 +11,17 @@ make check-go    # go vet, golangci-lint, go test
 make check-web   # svelte-check, prettier, eslint, vitest, vite build
 make smoke       # full build, then start the binary and check it
 make build       # frontend, then bin/watcht with it embedded
+make docker-smoke # build the image, run it, wait for healthy, smoke-test it
 make run         # build and run on :8080
 make dev         # Go on :8090 and Vite on :5173 with hot reload
 make help        # list all targets
 ```
 
 `make generate` (sqlc) arrives with the database in M1. CI runs
-`check-go`, `check-web`, and `smoke` as separate jobs; `make check` runs
-all three.
+`check-go`, `check-web`, `smoke`, and the Docker build with
+`scripts/docker-smoke.sh` as separate jobs. `make check` runs all but the
+Docker job, which needs Docker locally: run `make docker-smoke` for
+Docker changes.
 
 While iterating:
 

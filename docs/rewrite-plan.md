@@ -287,6 +287,11 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - Go serves the embedded SPA and `/healthz`, and has a `watcht healthcheck` subcommand.
 - Basic Dockerfile (distroless, non-root, `HEALTHCHECK`), built in CI on every PR.
 - **Done when:** `make build` produces one binary that serves a "hello" page, and the Docker image does the same and reports healthy.
+- **Status: done** (PRs #8, #9, and the Docker PR). Both parts of "Done when" are checked by `make smoke` and `make docker-smoke`, which CI runs on every PR. Notes:
+  - Base images: Node 24 and Go 1.27.3 on Debian 13 (trixie) for the build stages, `gcr.io/distroless/static-debian13:nonroot` at runtime, all pinned by digest. The image is about 18 MB.
+  - The build stages run on the build machine's architecture and cross-compile Go, so the M6 multi-arch build needs no emulation.
+  - The image has no `/data` volume yet; M1 adds `WATCHT_DATA_DIR` and the volume together.
+  - `make check` runs everything CI runs except the Docker build, which needs Docker; that's `make docker-smoke`.
 
 ### M1: Database
 

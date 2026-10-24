@@ -55,6 +55,9 @@ Before reporting done:
   (the [testing guide](docs/agent-guides/testing.md) lists what that is
   today). While iterating, run only the touched package
   (`go test ./internal/httpapi/...`) and run `make check` once at the end.
+- **Docker changes** (`Dockerfile`, `.dockerignore`, or anything that
+  changes what the image copies): also run `make docker-smoke`, which
+  `make check` doesn't cover because it needs Docker.
 - **Schema changes:** add a new migration file, run `make generate`, and
   include the regenerated sqlc code. Never hand-edit `internal/db/sqlc/`.
 - **Security-sensitive changes** (the list in `SECURITY.md`): a security
