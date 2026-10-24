@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +15,11 @@ import (
 
 func newTestRouter(t *testing.T) (http.Handler, *bytes.Buffer) {
 	t.Helper()
+	return newTestRouterWithHealth(t, nil)
+}
+
+func newTestRouterWithHealth(t *testing.T, health func(context.Context) error) (http.Handler, *bytes.Buffer) {
+	t.Helper()
 	var logs bytes.Buffer
 	spa := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "spa")
@@ -20,7 +27,42 @@ func newTestRouter(t *testing.T) (http.Handler, *bytes.Buffer) {
 	return NewRouter(Deps{
 		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
 		WebUI:  spa,
+		Health: health,
 	}), &logs
+}
+
+func TestHealthzReportsUnhealthyDependency(t *testing.T) {
+	h, logs := newTestRouterWithHealth(t, func(context.Context) error {
+		return errors.New("disk on fire at /data/watcht.db")
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	var body errorBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Error.Code != "unhealthy" {
+		t.Errorf("code = %q, want unhealthy", body.Error.Code)
+	}
+	if strings.Contains(rec.Body.String(), "/data") {
+		t.Errorf("response leaks the internal error: %s", rec.Body.String())
+	}
+	if !strings.Contains(logs.String(), "disk on fire") {
+		t.Errorf("the cause should be logged: %s", logs.String())
+	}
+}
+
+func TestHealthzHealthyDependency(t *testing.T) {
+	h, _ := newTestRouterWithHealth(t, func(context.Context) error { return nil })
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
 }
 
 func TestHealthz(t *testing.T) {
