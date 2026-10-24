@@ -14,7 +14,8 @@
   "permissions": {
     "deny": [
       "Edit(/internal/db/sqlc/**)",
-      "Edit(/web/build/**)"
+      "Edit(/web/build/**)",
+      "Edit(/internal/webui/dist/**)"
     ],
     "ask": [
       "Edit(/LICENSE)",
