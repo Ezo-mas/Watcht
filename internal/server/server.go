@@ -13,8 +13,9 @@ import (
 )
 
 // shutdownTimeout bounds how long in-flight requests get to finish after a
-// shutdown signal.
-const shutdownTimeout = 10 * time.Second
+// shutdown signal. It stays under Docker's default 10s stop grace period so
+// cleanup after Shutdown (closing the database) runs before SIGKILL.
+const shutdownTimeout = 8 * time.Second
 
 // Run serves handler on addr until ctx is cancelled, then shuts down
 // gracefully. It returns nil after a clean shutdown.

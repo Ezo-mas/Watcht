@@ -11,10 +11,17 @@ import (
 	"embed"
 	"errors"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
 )
+
+func init() {
+	// Go's built-in MIME table lacks this, and the distroless image has no
+	// /etc/mime.types to fill the gap.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 //go:embed all:dist
 var embedded embed.FS
@@ -50,6 +57,13 @@ func Handler(fsys fs.FS) http.Handler {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			}
 			files.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(name, "_app/") {
+			// A missing build asset (e.g. an old chunk requested by a tab
+			// opened before an upgrade) must 404, not get index.html as
+			// JavaScript.
+			http.NotFound(w, r)
 			return
 		}
 		serveIndex(w, r, fsys)

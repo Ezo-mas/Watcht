@@ -26,7 +26,9 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("/healthz", handleHealthz)
 
 	// Unknown API paths get a JSON 404 instead of falling through to the
-	// SPA, so API clients never receive index.html.
+	// SPA, so API clients never receive index.html. Because this pattern
+	// matches every /api/ path, the mux never produces its own 405 for API
+	// routes: see "Adding an endpoint" in docs/agent-guides/backend.md.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")
 	})
@@ -52,8 +54,9 @@ func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		if r.URL.Path == "/healthz" {
-			// Container health checks hit this every few seconds.
+		if r.URL.Path == "/healthz" && rec.status == http.StatusOK {
+			// Container health checks hit this every few seconds; only
+			// failures are worth a log line.
 			return
 		}
 		logger.Info("request",

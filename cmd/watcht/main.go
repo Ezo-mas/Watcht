@@ -70,6 +70,12 @@ func serve(stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		// Restore default signal handling once shutdown starts, so a second
+		// Ctrl-C kills the process instead of waiting for the drain.
+		<-ctx.Done()
+		stop()
+	}()
 
 	handler := httpapi.NewRouter(httpapi.Deps{
 		Logger: logger,

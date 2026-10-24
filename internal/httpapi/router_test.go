@@ -101,6 +101,11 @@ func TestRequestLogOmitsQueryAndHealthz(t *testing.T) {
 		t.Errorf("log is missing the request path: %s", out)
 	}
 	if strings.Contains(out, "/healthz") {
-		t.Errorf("health checks should not be logged: %s", out)
+		t.Errorf("successful health checks should not be logged: %s", out)
+	}
+
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/healthz", nil))
+	if !strings.Contains(logs.String(), "path=/healthz status=405") {
+		t.Errorf("failed health check should be logged: %s", logs.String())
 	}
 }

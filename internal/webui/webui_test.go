@@ -30,7 +30,9 @@ func TestHandler(t *testing.T) {
 		{name: "index.html path serves index", method: http.MethodGet, path: "/index.html", wantStatus: 200, wantBody: "<html>app</html>", wantCache: "no-cache"},
 		{name: "static file", method: http.MethodGet, path: "/favicon.png", wantStatus: 200, wantBody: "png"},
 		{name: "immutable asset is cached", method: http.MethodGet, path: "/_app/immutable/entry/app.js", wantStatus: 200, wantBody: "console.log(1)", wantCache: "public, max-age=31536000, immutable"},
-		{name: "directory falls back to index", method: http.MethodGet, path: "/_app/immutable/", wantStatus: 200, wantBody: "<html>app</html>", wantCache: "no-cache"},
+		{name: "missing build asset is a 404", method: http.MethodGet, path: "/_app/immutable/entry/old.js", wantStatus: 404},
+		{name: "build directory is a 404", method: http.MethodGet, path: "/_app/immutable/", wantStatus: 404},
+		{name: "other directory falls back to index", method: http.MethodGet, path: "/movies/", wantStatus: 200, wantBody: "<html>app</html>", wantCache: "no-cache"},
 		{name: "path traversal stays inside", method: http.MethodGet, path: "/../../etc/passwd", wantStatus: 200, wantBody: "<html>app</html>", wantCache: "no-cache"},
 		{name: "head has no body", method: http.MethodHead, path: "/", wantStatus: 200, wantBody: "", wantCache: "no-cache"},
 		{name: "post not allowed", method: http.MethodPost, path: "/", wantStatus: 405},
@@ -73,5 +75,15 @@ func TestDistIsReadable(t *testing.T) {
 	// the binary builds without a frontend build.
 	if _, err := Dist().Open("."); err != nil {
 		t.Fatalf("Dist().Open(\".\") error = %v", err)
+	}
+}
+
+func TestWebmanifestMIME(t *testing.T) {
+	fsys := fstest.MapFS{"index.html": {Data: []byte("x")}, "app.webmanifest": {Data: []byte("{}")}}
+	rec := httptest.NewRecorder()
+	Handler(fsys).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/app.webmanifest", nil))
+
+	if ct := rec.Header().Get("Content-Type"); ct != "application/manifest+json" {
+		t.Errorf("Content-Type = %q, want application/manifest+json", ct)
 	}
 }

@@ -18,7 +18,9 @@ func TestHealthURL(t *testing.T) {
 	}{
 		{listen: ":8080", want: "http://127.0.0.1:8080/healthz"},
 		{listen: "0.0.0.0:8080", want: "http://127.0.0.1:8080/healthz"},
-		{listen: "[::]:8080", want: "http://[::1]:8080/healthz"},
+		{listen: "[::]:8080", want: "http://127.0.0.1:8080/healthz"},
+		{listen: "[::0]:8080", want: "http://127.0.0.1:8080/healthz"},
+		{listen: "[::1]:8080", want: "http://[::1]:8080/healthz"},
 		{listen: "127.0.0.1:8099", want: "http://127.0.0.1:8099/healthz"},
 		{listen: "192.168.1.10:8080", want: "http://192.168.1.10:8080/healthz"},
 		{listen: "nonsense", wantErr: true},
