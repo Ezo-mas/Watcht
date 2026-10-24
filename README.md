@@ -16,7 +16,7 @@ The UI favours information density and workflow speed, in the spirit of classic 
 
 ## Status
 
-watcht is being rewritten from scratch. The original Next.js + PostgreSQL prototype is being replaced by a Go server with a SvelteKit frontend and SQLite storage. Until the rewrite reaches parity, the code in this repository is the legacy prototype.
+watcht is being rewritten from scratch: the original Next.js + PostgreSQL prototype is being replaced by a Go server with a SvelteKit frontend and SQLite storage. The rewrite is at its first milestone, so there's nothing usable yet.
 
 The full plan, including architecture, schema, and milestones, is in [docs/rewrite-plan.md](docs/rewrite-plan.md).
 
@@ -86,7 +86,7 @@ You'll need your own free TMDB API key; see TMDB's [API getting started guide](h
 
 ## Legacy prototype
 
-The original Next.js app is still in this repository until the first rewrite milestone removes it. It will be tagged `legacy-nextjs` for reference and isn't maintained.
+The original Next.js app has been removed. It's kept at the git tag `legacy-nextjs` for reference and isn't maintained.
 
 ## Development
 

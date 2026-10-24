@@ -1,29 +1,34 @@
 # Testing guide — canonical verification commands and caveats
 
 The required checks for "done" are in the root `AGENTS.md` ("Definition of
-done"). This guide is the full command reference. The commands exist from
-milestone M0 on.
+done"). This guide is the full command reference.
 
 ## Commands (from the repository root)
 
 ```bash
 make check       # everything CI runs; the definition of done
-make test        # go test ./... and the web tests
-make lint        # go vet, golangci-lint, web lint
-make generate    # sqlc generate; commit the result
-make build       # web build, then the Go binary with it embedded
-make dev         # Go server on :8080 and Vite on :5173
+make test        # go test ./...
+make lint        # go vet and golangci-lint
+make build       # bin/watcht
+make run         # build and run on :8080
+make help        # list targets
 ```
+
+Planned: web lint/check/test join `make check` when the frontend lands,
+and `make generate` (sqlc) arrives with the database in M1.
 
 While iterating:
 
 ```bash
-go test ./internal/tracking/...          # one package
-go test ./internal/tracking/ -run Dedupe # one test
+go test ./internal/httpapi/...            # one package
+go test ./internal/httpapi/ -run Healthz  # one test
 ```
 
-Go and its tools come from the versions pinned in `go.mod` (`go tool sqlc`,
-`go tool goose`). Don't install them globally.
+The Makefile exports `GOTOOLCHAIN=auto`, so Go uses the version pinned in
+`go.mod` even where the distro defaults to a local toolchain.
+golangci-lint runs through `go run` at the version in `.golangci-version`;
+the first run compiles it (about a minute), later runs are cached. Don't
+install Go tools globally.
 
 ## Writing tests
 

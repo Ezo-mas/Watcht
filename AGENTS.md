@@ -8,10 +8,10 @@ listed in `SECURITY.md`; deferred issues go in `docs/TECH_DEBT.md`.
 ## Current state
 
 watcht is being rewritten from Next.js + PostgreSQL to a Go server with an
-embedded SvelteKit SPA and SQLite. Until milestone M0 lands, the repository
-still contains the legacy Next.js app (`app/`, `components/`, `lib/`, `db/`,
-`drizzle/`). It is reference material only: don't modify it, don't fix it,
-and don't port its code line by line. M0 deletes it.
+embedded SvelteKit SPA and SQLite, following the milestones in
+`docs/rewrite-plan.md`. The legacy app has been removed; it's kept at the
+git tag `legacy-nextjs` as a reference for features and UI only. Don't port
+its code line by line.
 
 ## Behavior rules
 
@@ -51,10 +51,10 @@ and don't port its code line by line. M0 deletes it.
 
 Before reporting done:
 
-- Run `make check` from the repository root. It runs everything CI runs:
-  Go vet, golangci-lint, Go tests, the sqlc diff check, and the web lint,
-  type check, and tests. While iterating, run only the touched package
-  (`go test ./internal/tracking/...`) and run `make check` once at the end.
+- Run `make check` from the repository root. It runs everything CI runs
+  (the [testing guide](docs/agent-guides/testing.md) lists what that is
+  today). While iterating, run only the touched package
+  (`go test ./internal/httpapi/...`) and run `make check` once at the end.
 - **Schema changes:** add a new migration file, run `make generate`, and
   include the regenerated sqlc code. Never hand-edit `internal/db/sqlc/`.
 - **Security-sensitive changes** (the list in `SECURITY.md`): a security

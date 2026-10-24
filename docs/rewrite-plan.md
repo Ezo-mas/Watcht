@@ -48,8 +48,8 @@ Local builds and CI must use the same tool versions:
 
 - **Go:** the `go` and `toolchain` lines in `go.mod`, and CI reads the version from `go.mod`. Go downloads the pinned toolchain automatically, except where a distro sets `GOTOOLCHAIN=local` (Fedora does). So the Makefile exports `GOTOOLCHAIN=auto`, and every `make` target uses the pinned toolchain whatever Go is installed.
 - **Go tools:** `sqlc` and `goose` pinned as `tool` directives in `go.mod` and run with `go tool sqlc` / `go tool goose`, so no global installs are needed.
-- **golangci-lint:** version pinned in one place (`.golangci-version`), read by both the Makefile and the CI action.
-- **Node and pnpm:** `.node-version` for Node, `packageManager` in `web/package.json` for pnpm (via Corepack), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
+- **golangci-lint:** version pinned in one place (`.golangci-version`). The Makefile runs it with `go run` at that version, and CI runs `make check`, so both use the same one.
+- **Node and pnpm:** `.node-version` for Node (the major version, `24`, since distro packages and CI patch levels differ; CI reads it with `node-version-file`), `packageManager` in `web/package.json` for pnpm (via Corepack), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
 - **CI actions** pinned to exact versions.
 - **Docker base images** pinned by digest.
 
@@ -121,7 +121,7 @@ Accounts:
 - `sessions`: hashed session token, user, expiry, last seen, user agent
 - `api_tokens`: hashed token, user, name, scopes, last used (for webhooks and scripts)
 - `oidc_identities`: issuer + subject mapped to a user (added with OIDC)
-- `user_settings`: time zone, plus per-user JSON for dashboard and profile layouts (replaces the two layout tables)
+- `user_settings`: time zone, plus per-user JSON for the dashboard layout (replaces the two legacy layout tables)
 
 Catalog (shared by all users):
 
@@ -148,6 +148,7 @@ System:
 - `progress_movies`, `progress_shows`, `progress_episodes`: progress is derived from `watch_events` and `seasons` with queries. At household scale these are fast, and there's no second copy to keep in sync. Add a cache table later only if profiling shows a need.
 - `stats_snapshots`: stats are computed on demand for the same reason.
 - Trakt-specific columns on users: Trakt becomes an importer, not an identity.
+- Community and public-profile fields (`handle`, `is_private`, `bio`, `location`, `gender`, `joined_at`, avatar URL) and the separate profile layout: watcht is self-hosted for a household, so there are no public profiles. Users have only what sign-in and the household need.
 
 ### Deduplication
 
