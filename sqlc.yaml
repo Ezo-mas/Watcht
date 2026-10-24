@@ -1,0 +1,13 @@
+# sqlc generates type-safe Go from the SQL in internal/db/queries, checked
+# against the schema the migrations build. Run `make generate` after
+# changing either; CI fails if internal/db/sqlc is stale.
+version: "2"
+sql:
+  - engine: sqlite
+    schema: internal/db/migrations
+    queries: internal/db/queries
+    gen:
+      go:
+        package: sqlc
+        out: internal/db/sqlc
+        emit_empty_slices: true

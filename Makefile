@@ -11,6 +11,13 @@ export CGO_ENABLED := 0
 GOLANGCI_VERSION := $(shell cat .golangci-version)
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
+# sqlc runs through go run (like golangci-lint) rather than a go.mod tool
+# directive, which would add its large dependency tree to go.mod and the
+# image build. Built without CGO it uses WASM parsers, so no C compiler is
+# needed.
+SQLC_VERSION := $(shell cat .sqlc-version)
+SQLC := go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
+
 VERSION ?= $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
@@ -28,8 +35,9 @@ DATA_DIR ?= ./data
 
 IMAGE ?= watcht:local
 
-.PHONY: help build build-go run dev smoke docker docker-smoke tidy-check test test-go test-web \
-	lint lint-go lint-web check check-go check-web web-install web-build node-version clean
+.PHONY: help build build-go run dev smoke docker docker-smoke generate generate-check tidy-check \
+	test test-go test-web lint lint-go lint-web check check-go check-web web-install web-build \
+	node-version clean
 
 help: ## List the targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -71,10 +79,18 @@ dev: web-install ## Go server on :$(DEV_API_PORT) and Vite on :5173 (open :5173)
 
 check: check-go check-web smoke ## Everything CI runs
 
-check-go: tidy-check lint-go test-go ## go.mod tidiness, Go lint, and tests
+check-go: tidy-check generate-check lint-go test-go ## go.mod tidiness, sqlc freshness, Go lint, and tests
 
 tidy-check: ## Fail if go.mod or go.sum need go mod tidy
 	@go mod tidy -diff >/dev/null || { echo "go.mod/go.sum are not tidy: run 'go mod tidy'." >&2; exit 1; }
+
+# --- Code generation ---
+
+generate: ## Regenerate internal/db/sqlc from the migrations and queries
+	$(SQLC) generate
+
+generate-check: ## Fail if internal/db/sqlc is out of date
+	@$(SQLC) diff || { echo "internal/db/sqlc is stale: run 'make generate' and commit the result." >&2; exit 1; }
 
 check-web: lint-web test-web ## Web lint, type check, tests, and build
 	$(PNPM) build
