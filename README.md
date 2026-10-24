@@ -1,161 +1,101 @@
 # watcht
 
-watcht is a private-first film and TV tracking app inspired by the information density and workflow speed of classic Trakt-era interfaces.
+watcht is a self-hosted film and TV tracker. You run it on your own hardware, and your watch history lives in a single SQLite database you own.
 
-The goal is to deliver a focused personal tracker first: watchlist, watched history, show episode progress, ratings, and dashboard stats. Social and sharing features are intentionally deferred until after the private core is stable.
+It's built for one person or a household, running on the same box as the rest of your media stack. watcht keeps your watched history, ratings, watchlist, and episode progress. External services plug in around it: metadata and lists come from providers like TMDB and MDBList, and playback history can flow in from media servers like Jellyfin and Plex.
 
-## What it does today
+The UI favours information density and workflow speed, in the spirit of classic Trakt-era interfaces. There is no hosted version and no social layer.
 
-- OAuth sign-in foundation with NextAuth v5 (Google and GitHub)
-- Personal dashboard with a Trakt-v2-inspired hero, live data-backed widgets, and modular block ordering
-- Dedicated profile page with persisted per-user layout preferences
-- Watchlist management (list, add, remove)
-- Mark watched for movies and episode-level logging for shows
-- Recent watched activity feed (movies and episodes)
-- PostgreSQL-first schema with Drizzle data access and Trakt import-ready model coverage
+## Why watcht
+
+- **You own the data.** Your history is in a database on your disk, not behind someone else's API or paywall.
+- **Simple to run.** One binary (or one container) and one data directory. No separate database server, no Redis, no cloud account.
+- **Light on resources.** A small Go server that's comfortable on a NAS or Raspberry Pi next to Jellyfin.
+- **Bring your sources.** Metadata, lists, and playback sync are pluggable providers rather than hard dependencies.
+- **Easy to leave other trackers.** Importers are a first-class goal, so moving your history in (and out) should be painless.
+
+## Status
+
+watcht is being rewritten from scratch. The original Next.js + PostgreSQL prototype is being replaced by a Go server with a SvelteKit frontend and SQLite storage. Until the rewrite reaches parity, the code in this repository is the legacy prototype.
+
+The full plan, including architecture, schema, and milestones, is in [docs/rewrite-plan.md](docs/rewrite-plan.md).
+
+## Planned features
+
+First release (v0.1):
+
+- Local accounts for household members, with first-run admin setup
+- Search and metadata from TMDB
+- Watch history for movies and episodes, with season marking and show progress
+- Watchlist and ratings
+- Dashboard with customizable widget layout and stats in your time zone
+- Search across your own library
+- Import from a Trakt data export
+- Docker image and release binaries, with automatic daily database backups and a backup before every upgrade
+
+After v0.1:
+
+- Jellyfin sync via webhooks and history import (a watch counts at 85% played)
+- Letterboxd CSV import
+- MDBList lists and aggregated ratings
+- Plex sync
+- Optional OIDC sign-in (Authelia, Authentik, Keycloak, ...)
+- Full data export
+
+## Architecture
+
+- **Go server:** the standard library HTTP server provides a JSON API, webhook receivers, and a background job worker, all in one process.
+- **SvelteKit frontend:** built as a static single-page app and embedded into the Go binary.
+- **SQLite storage:** WAL mode, with migrations applied automatically at startup. Queries are plain SQL compiled to type-safe Go with sqlc.
+- **Providers:** TMDB, MDBList, Jellyfin, Plex, and importers are adapters behind small Go interfaces, so none of them are required to keep your data.
 
 ## Tech stack
 
-- Next.js App Router + React + TypeScript
-- Tailwind CSS for UI styling
-- NextAuth v5 for authentication
-- PostgreSQL + Drizzle ORM + pg
-- Redis planned for caching/queues in later phases
+- Go, `net/http`, `log/slog`
+- SQLite via `modernc.org/sqlite` (pure Go, no CGO)
+- sqlc for queries, goose for migrations
+- argon2id password hashing, cookie sessions, optional OIDC
+- SvelteKit (Svelte 5, TypeScript) in SPA mode with `adapter-static`
+- Tailwind CSS
 
-## Getting started
+## Self-hosting (planned)
 
-### Prerequisites
+Once the first release is out, running watcht will look like this:
 
-- Node.js 20+
-- pnpm 9+
-- PostgreSQL instance (local or managed)
+```yaml
+services:
+  watcht:
+    image: ghcr.io/ezo-mas/watcht:latest
+    user: "1000:1000"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      TMDB_API_KEY: your-tmdb-key
+    restart: unless-stopped
+```
 
-### Local setup
+Set `user` to the UID and GID that own your `./data` directory (run `id` to find yours); the container doesn't support `PUID`/`PGID` variables. The image includes a built-in health check.
 
-1. Install dependencies.
-   pnpm install
-2. Create environment file.
-   copy .env.example .env.local
-3. Fill required values in .env.local (at minimum: DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET).
-4. Run database migrations.
-   pnpm db:migrate:dev
-5. Start the dev server.
-   pnpm dev
+Release binaries for Linux, macOS, and Windows will also be available for running without Docker, with a sample systemd unit.
 
-### OAuth setup
+All state lives in the data volume. watcht writes consistent database snapshots to `/data/backups/` daily; back up that folder rather than copying the live database file.
 
-OAuth works locally once the provider app settings and env vars match.
+You'll need your own free TMDB API key; see TMDB's [API getting started guide](https://developer.themoviedb.org/docs/getting-started).
 
-#### Google
+## Legacy prototype
 
-1. Create an OAuth client in Google Cloud Console.
-2. Add this redirect URI:
+The original Next.js app is still in this repository until the first rewrite milestone removes it. It will be tagged `legacy-nextjs` for reference and isn't maintained.
 
-   `http://localhost:3000/api/auth/callback/google`
+## Development
 
-3. Copy the client ID and client secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+watcht is mostly written by AI coding agents and reviewed by the maintainer. Instructions for agents (and humans) are in [AGENTS.md](AGENTS.md) and [docs/agent-guides/](docs/agent-guides/). Security reporting and review rules are in [SECURITY.md](SECURITY.md).
 
-#### GitHub
+## Attribution
 
-1. Create an OAuth App in GitHub Developer Settings.
-2. Add this callback URL:
+Metadata and images are provided by [TMDB](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-   `http://localhost:3000/api/auth/callback/github`
+## License
 
-3. Copy the client ID and client secret into `GITHUB_ID` and `GITHUB_SECRET`.
-
-#### Required auth env vars
-
-- `NEXTAUTH_URL=http://localhost:3000`
-- `NEXTAUTH_SECRET=<strong-random-secret>`
-- `AUTH_ENABLE_LOCAL_BYPASS=true` for development-only bypass sign-in
-
-If you only want the local bypass while testing, you can leave the OAuth provider values as placeholders. If you want Google/GitHub sign-in, replace the placeholders before using the OAuth buttons.
-
-## Environment variables
-
-Required for local auth and data flows:
-
-- NEXTAUTH_URL
-- NEXTAUTH_SECRET
-- GOOGLE_CLIENT_ID
-- GOOGLE_CLIENT_SECRET
-- GITHUB_ID
-- GITHUB_SECRET
-- DATABASE_URL
-- REDIS_URL
-- TMDB_API_KEY
-- JOB_SECRET (optional for /api/jobs/stats-snapshot)
-
-OAuth callback URLs for local development:
-
-- http://localhost:3000/api/auth/callback/google
-- http://localhost:3000/api/auth/callback/github
-
-Tip: `AUTH_ENABLE_LOCAL_BYPASS=true` is optional in development and lets you sign in without OAuth while you finish provider setup.
-
-## Scripts
-
-- pnpm dev - start dev server on port 3000
-- pnpm build - build for production
-- pnpm start - run production build
-- pnpm lint - run ESLint
-- pnpm typecheck - run TypeScript type check
-- pnpm format - format code with Prettier
-- pnpm db:generate - generate new migration from schema.ts changes
-- pnpm db:migrate:dev - run pending migrations (loads .env.local)
-- pnpm db:migrate - run pending migrations (requires DATABASE_URL env var)
-- pnpm db:studio - open Drizzle Studio for interactive schema exploration
-
-## Database migrations
-
-Drizzle is the source of truth for schema in this repo. 
-
-**Files to commit:**
-- `db/schema.ts` - schema definitions (edit this to make schema changes)
-- `drizzle/` - generated migration files and metadata (auto-generated, always commit)
-
-**Workflow:**
-1. Edit `db/schema.ts` to define schema changes
-2. Run `pnpm db:generate` to create a new migration file in `drizzle/`
-3. Commit both `db/schema.ts` and the new migration file
-4. Run `pnpm db:migrate:dev` (locally) or `pnpm db:migrate` (in other environments) to apply migrations
-
-The `drizzle/` folder contains SQL files and `_journal.json` which tracks applied migrations across environments.
-
-## API surface (current)
-
-- /api/auth/[...nextauth]
-- /api/watchlist
-- /api/watch-events
-- /api/tmdb/search
-- /api/jobs/stats-snapshot
-- /api/ratings
-
-## Project structure
-
-- app/ - routes, server components, and API handlers
-- components/ - UI and interactive client components
-- db/ - Drizzle schema, generated migration metadata, and import-scope notes
-- lib/ - auth/db/env helpers and core services
-- .github/ - planning docs and CI workflow
-
-## Quality gates
-
-CI runs on push and pull request with:
-
-- pnpm lint
-- pnpm typecheck
-- pnpm build
-
-Workflow file: .github/workflows/ci.yml
-
-## Roadmap focus
-
-Near-term implementation priorities:
-
-- Dashboard and profile layout customization UI
-- Ratings submission + dashboard integration
-- Search/discovery integration with TMDB data enrichment
-- Stats hardening and richer dashboard slices
-- Trakt import/export contract tests after DB phase expansion
+watcht is licensed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified version of watcht as a network service, you must make your modified source available to its users.

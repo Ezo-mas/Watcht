@@ -40,3 +40,6 @@ next-env.d.ts
 .github/copilot-instructions.md
 .github/project-plan.md
 /localFiles
+# Claude Code local state
+.claude/settings.local.json
+.claude/worktrees/
