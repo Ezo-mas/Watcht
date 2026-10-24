@@ -95,12 +95,13 @@ sqlc.yaml
 
 ### SQLite setup
 
-Applied on every connection:
+Connection settings:
 
-- `journal_mode=WAL`: readers don't block the writer
-- `foreign_keys=ON`: SQLite has them off by default
-- `busy_timeout=5000`: wait instead of failing when the writer is busy
-- `synchronous=NORMAL`: safe with WAL and much faster
+- `journal_mode=WAL`: readers don't block the writer. Set by the write pool; it's stored in the file, so readers get it too. `Open` fails if the switch didn't happen.
+- `foreign_keys=ON`: SQLite has them off by default. Every connection.
+- `busy_timeout=5000`: wait instead of failing when the writer is busy. Every connection.
+- `synchronous=NORMAL`: safe with WAL and much faster. Write pool (it has no effect on reads).
+- `query_only=ON` on the read pool, so a write there fails.
 
 Use two `*sql.DB` handles: a write pool limited to one connection, and a read pool with several. This avoids `SQLITE_BUSY` errors entirely.
 

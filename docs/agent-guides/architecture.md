@@ -26,8 +26,10 @@ themselves. `catalog` and `tracking` decide what gets stored.
    `busy_timeout=5000`; the write pool also sets `journal_mode=WAL` and
    `synchronous=NORMAL`. Don't open SQLite anywhere else (tests use
    `internal/db/dbtest`), and use `Write` for any transaction that writes,
-   including read-then-write. The database file is `0600`, and its
-   `-wal`/`-shm` files inherit that mode.
+   including read-then-write. `Open` makes the database and its
+   `-wal`/`-shm` files `0600` before SQLite opens them (creating an empty
+   `0600` file for a new database, tightening existing ones), and fails
+   if WAL mode couldn't be enabled.
 2. **Migrations.** Goose `.sql` files in `internal/db/migrations/`,
    embedded and applied by `db.Migrate` at startup. If the database
    already has a schema version and migrations are pending, it first
