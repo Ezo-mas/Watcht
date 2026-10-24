@@ -38,9 +38,12 @@ install Go tools globally.
 
 ## Writing tests
 
-- **Database tests** use the test helper in `internal/db`, which creates a
-  temporary SQLite file with migrations and pragmas applied. Never open a
-  database another way in tests, and never mock the database.
+- **Database tests** use `dbtest.New(t)` (`internal/db/dbtest`), which
+  creates a temporary SQLite file with the production pragmas and all
+  migrations applied, and closes it when the test ends. Never open a
+  database another way in tests, and never mock the database. Tests of
+  migration mechanics themselves (`internal/db`) use `db.Open` with
+  in-memory `fstest` migrations.
 - **HTTP tests** use `httptest` against the real router.
 - **Time** is controlled through the injected clock, never `time.Sleep`.
 - **Table-driven tests** for rules with many cases: dedupe windows, the

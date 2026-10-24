@@ -80,7 +80,7 @@ Set `user` to the UID and GID that own your `./data` directory (run `id` to find
 
 Release binaries for Linux, macOS, and Windows will also be available for running without Docker, with a sample systemd unit.
 
-All state lives in the data volume. watcht writes consistent database snapshots to `/data/backups/` daily; back up that folder rather than copying the live database file.
+All state lives in the data volume. You can take a backup at any time, even while watcht is running, with `docker compose exec watcht watcht backup`. watcht writes consistent database snapshots to `/data/backups/` daily; back up that folder rather than copying the live database file.
 
 You'll need your own free TMDB API key; see TMDB's [API getting started guide](https://developer.themoviedb.org/docs/getting-started).
 
@@ -100,6 +100,8 @@ make check         # everything CI runs (lint, type checks, tests, build, smoke 
 make build         # bin/watcht with the frontend embedded
 make docker-smoke  # build and test the container image
 ```
+
+`make run` and `make dev` keep their data in `./data` (set `DATA_DIR` to change it).
 
 ## Attribution
 
