@@ -1,6 +1,7 @@
 # Only what the image build needs; everything else stays out of the context.
 *
 !go.mod
+!go.sum
 !cmd/
 !internal/
 !web/
@@ -9,3 +10,4 @@ web/node_modules/
 web/build/
 web/.svelte-kit/
 **/*_test.go
+**/.env*

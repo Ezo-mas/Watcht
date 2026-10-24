@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 # watcht container image: the frontend is built with Node, embedded into a
 # static Go binary, and shipped on distroless as a non-root user. Base images
@@ -16,8 +16,12 @@ RUN pnpm build
 
 # --- Go build (cross-compiles for the target architecture) ---
 FROM --platform=$BUILDPLATFORM golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS server
+# The golang image defaults to GOTOOLCHAIN=local. With auto, a toolchain bump
+# in go.mod is honored even before this base image is updated.
+ENV GOTOOLCHAIN=auto
 WORKDIR /src
-COPY go.mod ./
+# go.sum* so the build works before and after the first dependency.
+COPY go.mod go.sum* ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
