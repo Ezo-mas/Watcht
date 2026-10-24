@@ -46,7 +46,7 @@ This is the plan for rewriting watcht from Next.js + PostgreSQL into a self-host
 
 Local builds and CI must use the same tool versions:
 
-- **Go:** the `go` and `toolchain` lines in `go.mod`. Go downloads the pinned toolchain automatically, and CI reads the version from `go.mod`.
+- **Go:** the `go` and `toolchain` lines in `go.mod`, and CI reads the version from `go.mod`. Go downloads the pinned toolchain automatically, except where a distro sets `GOTOOLCHAIN=local` (Fedora does). So the Makefile exports `GOTOOLCHAIN=auto`, and every `make` target uses the pinned toolchain whatever Go is installed.
 - **Go tools:** `sqlc` and `goose` pinned as `tool` directives in `go.mod` and run with `go tool sqlc` / `go tool goose`, so no global installs are needed.
 - **golangci-lint:** version pinned in one place (`.golangci-version`), read by both the Makefile and the CI action.
 - **Node and pnpm:** `.node-version` for Node, `packageManager` in `web/package.json` for pnpm (via Corepack), and a committed `pnpm-lock.yaml` installed with `--frozen-lockfile`.
