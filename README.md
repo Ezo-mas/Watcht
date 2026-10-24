@@ -92,6 +92,15 @@ The original Next.js app has been removed. It's kept at the git tag `legacy-next
 
 watcht is mostly written by AI coding agents and reviewed by the maintainer. Instructions for agents (and humans) are in [AGENTS.md](AGENTS.md) and [docs/agent-guides/](docs/agent-guides/). Security reporting and review rules are in [SECURITY.md](SECURITY.md).
 
+To work on it you need Go (any recent version; the Makefile fetches the pinned 1.27 toolchain), Node 24 (ideally through a version manager that reads `.node-version`), and Corepack for pnpm. Docker is only needed for the image.
+
+```bash
+make dev           # Go on :8090 and Vite on :5173 with hot reload; open :5173
+make check         # everything CI runs (lint, type checks, tests, build, smoke test)
+make build         # bin/watcht with the frontend embedded
+make docker-smoke  # build and test the container image
+```
+
 ## Attribution
 
 Metadata and images are provided by [TMDB](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
