@@ -4,9 +4,14 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
+	"strings"
 	"time"
+
+	"github.com/Ezo-mas/watcht/internal/auth"
 )
 
 // Deps are the dependencies the router needs. Fields are added as
@@ -19,29 +24,73 @@ type Deps struct {
 	// Health reports whether the server's dependencies (the database) work.
 	// Nil means always healthy.
 	Health func(context.Context) error
+	// Auth handles setup, sign-in, and sessions. Required.
+	Auth *auth.Service
+	// LoginLimiter limits login attempts per client. Nil means the default
+	// (10 attempts, then one a minute).
+	LoginLimiter *auth.Limiter
+	// BaseOrigin is WATCHT_BASE_URL's scheme://host, or "". Requests from
+	// it pass the cross-origin check, and an https origin makes the session
+	// cookie Secure.
+	BaseOrigin string
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For and
+	// X-Forwarded-Proto headers are believed (WATCHT_TRUSTED_PROXIES).
+	TrustedProxies []netip.Prefix
 }
 
 const healthTimeout = 2 * time.Second
 
 // NewRouter returns the root handler for the server.
-func NewRouter(d Deps) http.Handler {
+func NewRouter(d Deps) (http.Handler, error) {
+	limiter := d.LoginLimiter
+	if limiter == nil {
+		limiter = auth.NewLimiter(loginBurst, loginEvery, nil)
+	}
+	api := newAPIMux()
+	(&authHandlers{
+		auth:          d.Auth,
+		limiter:       limiter,
+		proxies:       proxies(d.TrustedProxies),
+		secureCookies: strings.HasPrefix(d.BaseOrigin, "https://"),
+		logger:        d.Logger,
+	}).register(api)
+
 	mux := http.NewServeMux()
 
 	// Registered without a method so other methods get 405 here instead of
 	// falling through to the SPA's catch-all route.
 	mux.HandleFunc("/healthz", healthzHandler(d.Logger, d.Health))
 
-	// Unknown API paths get a JSON 404 instead of falling through to the
-	// SPA, so API clients never receive index.html. Because this pattern
-	// matches every /api/ path, the mux never produces its own 405 for API
-	// routes: see "Adding an endpoint" in docs/agent-guides/backend.md.
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusNotFound, "not_found", "no such API endpoint")
-	})
+	// Every /api/ path goes to the API mux, so API clients never receive
+	// index.html: unknown paths get a JSON 404, wrong methods a JSON 405.
+	mux.Handle("/api/", api)
 
 	mux.Handle("/", d.WebUI)
 
-	return logRequests(d.Logger, mux)
+	csrf, err := crossOriginProtection(d.BaseOrigin)
+	if err != nil {
+		return nil, err
+	}
+	return logRequests(d.Logger, csrf.Handler(mux)), nil
+}
+
+// crossOriginProtection rejects cross-site browser requests that change
+// state (anything but GET, HEAD, and OPTIONS), which is the CSRF defense
+// alongside SameSite=Lax cookies. It trusts Sec-Fetch-Site, falling back to
+// comparing Origin with Host for older browsers, plus baseOrigin for
+// proxies that rewrite Host. Requests with neither header aren't from a
+// browser and pass.
+func crossOriginProtection(baseOrigin string) (*http.CrossOriginProtection, error) {
+	c := http.NewCrossOriginProtection()
+	if baseOrigin != "" {
+		if err := c.AddTrustedOrigin(baseOrigin); err != nil {
+			return nil, fmt.Errorf("WATCHT_BASE_URL: %w", err)
+		}
+	}
+	c.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusForbidden, "cross_origin", "cross-origin request blocked")
+	}))
+	return c, nil
 }
 
 func healthzHandler(logger *slog.Logger, health func(context.Context) error) http.HandlerFunc {
