@@ -3,14 +3,21 @@
 # asset, a 404 for a missing asset, and, on a fresh instance, first-run
 # setup and sign-in.
 #
-#   scripts/smoke.sh [BIN [PORT]]   start BIN on a spare loopback port first
-#   scripts/smoke.sh --url URL      test a server that is already running
+#   scripts/smoke.sh [BIN [PORT]]          start BIN on a spare loopback port
+#                                          with a throwaway data directory
+#   scripts/smoke.sh --url URL [--setup]   test a server that is already running
+#
+# The setup and sign-in checks create an admin account with a published
+# password, so with --url they run only when --setup is given. Use it only
+# on a throwaway instance, never a real one.
 #
 # Used by `make smoke`, `make docker-smoke`, and CI.
 set -euo pipefail
 
+setup=yes
 if [[ ${1:-} == --url ]]; then
 	base=${2:?--url needs a URL}
+	[[ ${3:-} == --setup ]] || setup=
 else
 	bin=${1:-bin/watcht}
 	port=${2:-18080}
@@ -47,7 +54,12 @@ type=$(curl -fsS -o /dev/null -w '%{content_type}' "$base$asset")
 status=$(curl -s -o /dev/null -w '%{http_code}' "$base/_app/immutable/missing.js")
 [[ $status == 404 ]] || fail "missing asset returned $status, want 404"
 
-# Auth. The instances this runs against are fresh, so setup is still open.
+if [[ -z $setup ]]; then
+	echo "smoke: ok ($base, $asset; setup and sign-in not checked without --setup)"
+	exit 0
+fi
+
+# Auth, on a fresh instance where setup is still open.
 api="$base/api/v1/auth"
 session=$(curl -fsS "$api/session")
 grep -q '"setup_required":true' <<<"$session" || fail "fresh instance: /api/v1/auth/session = $session, want setup_required"

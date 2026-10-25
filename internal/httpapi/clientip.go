@@ -39,18 +39,52 @@ func (p proxies) clientIP(r *http.Request) netip.Addr {
 	for i := len(hops) - 1; i >= 0; i-- {
 		parts := strings.Split(hops[i], ",")
 		for j := len(parts) - 1; j >= 0; j-- {
-			addr, err := netip.ParseAddr(strings.TrimSpace(parts[j]))
-			if err != nil {
+			part := strings.TrimSpace(parts[j])
+			if part == "" {
+				continue // e.g. a trailing comma
+			}
+			addr, ok := parseHop(part)
+			if !ok {
 				// A garbled hop: stop at the last address we could believe.
 				return ip
 			}
-			ip = addr.Unmap().WithZone("")
+			ip = addr
 			if !p.trusts(ip) {
 				return ip
 			}
 		}
 	}
 	return ip
+}
+
+// parseHop parses one X-Forwarded-For entry: a bare address, or one with a
+// port or IPv6 brackets ("192.0.2.1:443", "[2001:db8::1]"), which some
+// proxies send.
+func parseHop(s string) (netip.Addr, bool) {
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		if ap, err := netip.ParseAddrPort(s); err == nil {
+			addr = ap.Addr()
+		} else if strings.HasPrefix(s, "[") && strings.HasSuffix(s, "]") {
+			if addr, err = netip.ParseAddr(s[1 : len(s)-1]); err != nil {
+				return netip.Addr{}, false
+			}
+		} else {
+			return netip.Addr{}, false
+		}
+	}
+	return addr.Unmap().WithZone(""), true
+}
+
+// forwardedFromUntrusted reports whether r carries forwarding headers that
+// are being ignored because the peer isn't a trusted proxy: a sign that
+// WATCHT_TRUSTED_PROXIES is missing.
+func (p proxies) forwardedFromUntrusted(r *http.Request) bool {
+	if r.Header.Get("X-Forwarded-For") == "" {
+		return false
+	}
+	peer := remoteAddr(r)
+	return peer.IsValid() && !p.trusts(peer)
 }
 
 // isHTTPS reports whether the client reached watcht over HTTPS: directly
@@ -64,7 +98,9 @@ func (p proxies) isHTTPS(r *http.Request) bool {
 		return false
 	}
 	// With several proxies the header can be a list; the first entry is
-	// what the client used.
+	// the scheme the first proxy saw. If a proxy appends instead of
+	// overwriting, the client controls that entry, but all it can do is
+	// make its own cookie Secure.
 	proto, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
 	return strings.EqualFold(strings.TrimSpace(proto), "https")
 }

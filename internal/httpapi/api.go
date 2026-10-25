@@ -26,9 +26,9 @@ func (a *apiMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.mux.ServeHTTP(w, r)
 		return
 	}
-	// No route matched: the mux's handler is its own 404 or 405 (or a
-	// redirect to a cleaned path). Run it against a recorder to learn which,
-	// then answer in JSON.
+	// No route matched: the mux's handler is its own 404 or 405. Run it
+	// against a recorder to learn which, then answer in JSON. (Unclean paths
+	// like /api//x never get here: the outer mux redirects them first.)
 	rec := &discardRecorder{header: http.Header{}, status: http.StatusOK}
 	h.ServeHTTP(rec, r)
 	switch rec.status {
@@ -50,6 +50,22 @@ type discardRecorder struct {
 func (d *discardRecorder) Header() http.Header         { return d.header }
 func (d *discardRecorder) Write(b []byte) (int, error) { return len(b), nil }
 func (d *discardRecorder) WriteHeader(status int)      { d.status = status }
+
+// jsonKind names a Go kind the way a JSON client would think of it.
+func jsonKind(k string) string {
+	switch k {
+	case "string":
+		return "string"
+	case "bool":
+		return "boolean"
+	case "struct", "map":
+		return "object"
+	case "slice", "array":
+		return "list"
+	default:
+		return "number"
+	}
+}
 
 // maxBodyBytes bounds JSON request bodies. Everything the API accepts so
 // far is a few short fields.
@@ -75,6 +91,11 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err != nil {
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			writeError(w, http.StatusRequestEntityTooLarge, "too_large", "the request body is too large")
+			return false
+		}
+		// The decoder's own message names Go types; say it in API terms.
+		if typeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
+			writeError(w, http.StatusBadRequest, "invalid_json", "field "+typeErr.Field+" must be a "+jsonKind(typeErr.Type.Kind().String()))
 			return false
 		}
 		writeError(w, http.StatusBadRequest, "invalid_json", "the request body isn't valid JSON for this endpoint: "+err.Error())

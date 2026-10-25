@@ -3,7 +3,9 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -36,12 +38,18 @@ type Deps struct {
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For and
 	// X-Forwarded-Proto headers are believed (WATCHT_TRUSTED_PROXIES).
 	TrustedProxies []netip.Prefix
+
+	// loginWait overrides the login deadline, for tests.
+	loginWait time.Duration
 }
 
 const healthTimeout = 2 * time.Second
 
 // NewRouter returns the root handler for the server.
 func NewRouter(d Deps) (http.Handler, error) {
+	if d.Auth == nil {
+		return nil, errors.New("httpapi: Deps.Auth is required")
+	}
 	limiter := d.LoginLimiter
 	if limiter == nil {
 		limiter = auth.NewLimiter(loginBurst, loginEvery, nil)
@@ -52,6 +60,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 		limiter:       limiter,
 		proxies:       proxies(d.TrustedProxies),
 		secureCookies: strings.HasPrefix(d.BaseOrigin, "https://"),
+		loginWait:     cmp.Or(d.loginWait, loginWait),
 		logger:        d.Logger,
 	}).register(api)
 

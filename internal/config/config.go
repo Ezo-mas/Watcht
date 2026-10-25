@@ -147,6 +147,11 @@ func parseProxy(entry string) (netip.Prefix, error) {
 		}
 		p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
 	}
+	// Trusting everyone would let any client choose its own IP for the
+	// login limit, and claim HTTPS.
+	if p.Bits() == 0 {
+		return netip.Prefix{}, errors.New("trusts every address; list only your reverse proxy's addresses")
+	}
 	return p.Masked(), nil
 }
 

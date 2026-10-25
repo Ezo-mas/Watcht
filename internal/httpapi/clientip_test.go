@@ -29,6 +29,10 @@ func TestClientIP(t *testing.T) {
 		{name: "IPv4-mapped IPv6 is unmapped", remote: "10.0.0.1:1", xff: []string{"::ffff:192.0.2.1"}, want: "192.0.2.1"},
 		{name: "mapped peer matches an IPv4 proxy", remote: "[::ffff:10.0.0.1]:1", xff: []string{"192.0.2.1"}, want: "192.0.2.1"},
 		{name: "zone is dropped", remote: "10.0.0.1:1", xff: []string{"fe80::1%eth0"}, want: "fe80::1"},
+		{name: "hop with a port", remote: "10.0.0.1:1", xff: []string{"192.0.2.1:443"}, want: "192.0.2.1"},
+		{name: "bracketed IPv6 hop", remote: "10.0.0.1:1", xff: []string{"[2001:db8::1]"}, want: "2001:db8::1"},
+		{name: "bracketed IPv6 hop with a port", remote: "10.0.0.1:1", xff: []string{"[2001:db8::1]:443"}, want: "2001:db8::1"},
+		{name: "trailing comma", remote: "10.0.0.1:1", xff: []string{"192.0.2.1,"}, want: "192.0.2.1"},
 		{name: "spaces around entries", remote: "10.0.0.1:1", xff: []string{" 192.0.2.1 ,10.0.0.2 "}, want: "192.0.2.1"},
 	}
 	for _, tt := range tests {

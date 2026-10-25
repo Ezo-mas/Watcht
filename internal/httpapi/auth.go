@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Ezo-mas/watcht/internal/auth"
@@ -20,9 +21,9 @@ const (
 	loginEvery = time.Minute
 )
 
-// loginWait bounds how long a login waits for a free password-hashing slot
-// (two run at once). Under a flood, requests fail with 503 instead of
-// queueing without limit.
+// loginWait bounds a whole login, which is mostly waiting for a free
+// password-hashing slot (two run at once). Under a flood, requests fail
+// with 503 instead of queueing without limit.
 const loginWait = 10 * time.Second
 
 type authHandlers struct {
@@ -32,7 +33,10 @@ type authHandlers struct {
 	// secureCookies is set when WATCHT_BASE_URL is https, so the cookie is
 	// Secure even if the proxy doesn't send X-Forwarded-Proto.
 	secureCookies bool
+	loginWait     time.Duration
 	logger        *slog.Logger
+
+	warnProxyOnce sync.Once
 }
 
 func (h *authHandlers) register(api *apiMux) {
@@ -104,6 +108,13 @@ func (h *authHandlers) setup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *authHandlers) login(w http.ResponseWriter, r *http.Request) {
+	if h.proxies.forwardedFromUntrusted(r) {
+		// Every client then shares the proxy's limit, so one person guessing
+		// passwords locks everyone out.
+		h.warnProxyOnce.Do(func() {
+			h.logger.Warn("login request has X-Forwarded-For from an address that isn't a trusted proxy; if watcht is behind a reverse proxy, set WATCHT_TRUSTED_PROXIES to its address", "peer", remoteAddr(r).String())
+		})
+	}
 	key := rateLimitKey(h.proxies.clientIP(r))
 	ok, retry := h.limiter.Take(key)
 	if !ok {
@@ -116,14 +127,18 @@ func (h *authHandlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), loginWait)
+	ctx, cancel := context.WithTimeout(r.Context(), h.loginWait)
 	defer cancel()
 	sess, err := h.auth.Login(ctx, c.Username, c.Password)
 	switch {
+	case r.Context().Err() != nil:
+		// The client went away; there's no one to answer.
+		h.limiter.Refund(key)
+		return
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		writeError(w, http.StatusUnauthorized, "invalid_credentials", "wrong username or password")
 		return
-	case errors.Is(err, context.DeadlineExceeded) && r.Context().Err() == nil:
+	case errors.Is(err, context.DeadlineExceeded):
 		h.limiter.Refund(key) // not the client's fault
 		w.Header().Set("Retry-After", "5")
 		writeError(w, http.StatusServiceUnavailable, "busy", "the server is busy; try again in a few seconds")
@@ -187,6 +202,7 @@ func (h *authHandlers) setSessionCookie(w http.ResponseWriter, r *http.Request, 
 		Value:    token,
 		Path:     "/",
 		Expires:  expires,
+		MaxAge:   int(time.Until(expires).Seconds()),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   h.secureCookies || h.proxies.isHTTPS(r),

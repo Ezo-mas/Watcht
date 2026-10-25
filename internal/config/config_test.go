@@ -148,6 +148,8 @@ func TestLoadTrustedProxies(t *testing.T) {
 		{name: "hostname", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "proxy.local"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "proxy.local": is not an IP address or CIDR`},
 		{name: "prefix length too long", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.0/33"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "10.0.0.0/33": is not an IP address or CIDR`},
 		{name: "bad entry after a good one", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.0/8, nope"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "nope": is not an IP address or CIDR`},
+		{name: "all IPv4", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "0.0.0.0/0"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "0.0.0.0/0": trusts every address`},
+		{name: "all IPv6", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.1, ::/0"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "::/0": trusts every address`},
 		{name: "IPv6 zone", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "fe80::1%eth0"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "fe80::1%eth0": must not have an IPv6 zone`},
 		{name: "IPv6 zone in CIDR", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "fe80::%eth0/64"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "fe80::%eth0/64": must not have an IPv6 zone`},
 		{name: "IPv4-mapped prefix shorter than /96", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "::ffff:10.0.0.0/8"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "::ffff:10.0.0.0/8": IPv4-mapped IPv6 prefixes must be /96 or longer`},

@@ -44,5 +44,6 @@ if [[ -z $uid || $uid == 0 ]]; then
 	exit 1
 fi
 
-"$(dirname "$0")/smoke.sh" --url "http://127.0.0.1:$port"
+# A fresh container, so the smoke test may create its admin account.
+"$(dirname "$0")/smoke.sh" --url "http://127.0.0.1:$port" --setup
 echo "docker-smoke: ok ($image, user $user, uid $uid)"

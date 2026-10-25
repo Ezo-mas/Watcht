@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Ezo-mas/watcht/internal/auth"
+	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/db/dbtest"
 )
 
@@ -26,6 +28,7 @@ func (c *testClock) Now() time.Time { return c.t }
 type authServer struct {
 	t     *testing.T
 	h     http.Handler
+	db    *db.DB
 	clock *testClock
 	logs  *bytes.Buffer
 }
@@ -34,24 +37,27 @@ type authServerOptions struct {
 	baseOrigin string
 	proxies    []netip.Prefix
 	limiter    *auth.Limiter
+	loginWait  time.Duration
 }
 
 func newAuthServer(t *testing.T, opts authServerOptions) *authServer {
 	t.Helper()
 	clock := &testClock{t: time.Now().UTC().Truncate(time.Second)}
 	var logs bytes.Buffer
+	d := dbtest.New(t)
 	h, err := NewRouter(Deps{
 		Logger:         slog.New(slog.NewTextHandler(&logs, nil)),
 		WebUI:          http.NotFoundHandler(),
-		Auth:           auth.New(dbtest.New(t), auth.Options{Argon2: cheapArgon2, Now: clock.Now}),
+		Auth:           auth.New(d, auth.Options{Argon2: cheapArgon2, Now: clock.Now}),
 		LoginLimiter:   opts.limiter,
 		BaseOrigin:     opts.baseOrigin,
 		TrustedProxies: opts.proxies,
+		loginWait:      opts.loginWait,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &authServer{t: t, h: h, clock: clock, logs: &logs}
+	return &authServer{t: t, h: h, db: d, clock: clock, logs: &logs}
 }
 
 // request is one HTTP request. Requests come from a same-origin browser
@@ -62,6 +68,7 @@ type request struct {
 	header             map[string]string
 	remoteAddr         string
 	crossSite          bool
+	ctx                context.Context
 }
 
 func (s *authServer) do(req request) *httptest.ResponseRecorder {
@@ -88,6 +95,9 @@ func (s *authServer) do(req request) *httptest.ResponseRecorder {
 	}
 	if req.remoteAddr != "" {
 		r.RemoteAddr = req.remoteAddr
+	}
+	if req.ctx != nil {
+		r = r.WithContext(req.ctx)
 	}
 	rec := httptest.NewRecorder()
 	s.h.ServeHTTP(rec, r)
@@ -523,5 +533,92 @@ func TestAuthLogsNoSecrets(t *testing.T) {
 		if strings.Contains(out, secret) {
 			t.Errorf("the log contains %q:\n%s", secret, out)
 		}
+	}
+}
+
+// A login that runs out of time (every hashing slot busy) is the server's
+// problem: 503, Retry-After, and the attempt isn't counted.
+func TestLoginBusy(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(1, time.Hour, nil), loginWait: time.Nanosecond})
+	s.setup("admin", "long enough")
+	for i := range 3 {
+		rec := s.do(request{method: "POST", path: "/api/v1/auth/login", body: creds("admin", "long enough")})
+		if rec.Code != http.StatusServiceUnavailable || decodeError(t, rec).Code != "busy" {
+			t.Fatalf("attempt %d: %d %s, want 503 busy (and not rate-limited: the attempt is refunded)", i+1, rec.Code, rec.Body)
+		}
+		if rec.Header().Get("Retry-After") != "5" {
+			t.Errorf("Retry-After = %q, want 5", rec.Header().Get("Retry-After"))
+		}
+	}
+}
+
+// A client that disconnects mid-login gets no answer, isn't counted, and
+// doesn't produce an error log line.
+func TestLoginClientGone(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(1, time.Hour, nil)})
+	s.setup("admin", "long enough")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for range 2 {
+		rec := s.do(request{method: "POST", path: "/api/v1/auth/login", body: creds("admin", "wrong"), ctx: ctx})
+		if rec.Body.Len() != 0 {
+			t.Errorf("response to a gone client: %d %s, want nothing written", rec.Code, rec.Body)
+		}
+	}
+	if strings.Contains(s.logs.String(), "level=ERROR") {
+		t.Errorf("a client disconnect was logged as an error:\n%s", s.logs)
+	}
+	if rec := s.do(request{method: "POST", path: "/api/v1/auth/login", body: creds("admin", "long enough")}); rec.Code != http.StatusOK {
+		t.Errorf("after disconnected attempts: %d, want 200 (they don't count)", rec.Code)
+	}
+}
+
+// Unexpected errors are logged and answered with a generic 500, never the
+// cause.
+func TestInternalErrorsAreGeneric(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	if _, err := s.db.Write.Exec("DROP TABLE sessions"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Write.Exec("DROP TABLE users"); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []request{
+		{method: "GET", path: "/api/v1/auth/session"},
+		{method: "POST", path: "/api/v1/auth/login", body: creds("admin", "long enough")},
+	} {
+		rec := s.do(req)
+		if rec.Code != http.StatusInternalServerError || decodeError(t, rec).Code != "internal" {
+			t.Errorf("%s %s: %d %s, want 500 internal", req.method, req.path, rec.Code, rec.Body)
+		}
+		if strings.Contains(rec.Body.String(), "no such table") {
+			t.Errorf("%s: the response leaks the database error: %s", req.path, rec.Body)
+		}
+	}
+	if !strings.Contains(s.logs.String(), "no such table") {
+		t.Errorf("the cause should be logged:\n%s", s.logs)
+	}
+}
+
+func TestJSONTypeErrorsDontNameGoTypes(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	rec := s.do(request{method: "POST", path: "/api/v1/auth/setup", body: `{"username":1,"password":"long enough"}`})
+	e := decodeError(t, rec)
+	if rec.Code != http.StatusBadRequest || e.Message != "field username must be a string" {
+		t.Errorf("%d %+v, want 400 with \"field username must be a string\"", rec.Code, e)
+	}
+}
+
+// Forwarding headers from a peer that isn't a trusted proxy usually mean
+// WATCHT_TRUSTED_PROXIES is missing; say so once.
+func TestWarnsOnceAboutUntrustedForwarding(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	s.setup("admin", "long enough")
+	for range 3 {
+		s.do(request{method: "POST", path: "/api/v1/auth/login", body: creds("admin", "wrong"),
+			remoteAddr: "172.17.0.1:5000", header: map[string]string{"X-Forwarded-For": "192.0.2.1"}})
+	}
+	if n := strings.Count(s.logs.String(), "WATCHT_TRUSTED_PROXIES"); n != 1 {
+		t.Errorf("warning logged %d times, want once:\n%s", n, s.logs)
 	}
 }
