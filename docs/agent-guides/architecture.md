@@ -60,10 +60,14 @@ themselves. `catalog` and `tracking` decide what gets stored.
 8. **Jobs.** Webhook handlers validate, store the raw event, enqueue a job,
    and return `202`. Long or retryable work runs in the job worker, never
    in a request handler.
-9. **Auth.** Session and API tokens are random, stored as SHA-256 hashes,
-   and compared in constant time. Passwords use argon2id. Every non-GET
-   request passes the `Origin` check. See `SECURITY.md` before changing
-   any of this.
+9. **Auth.** `internal/auth` owns it. Session and API tokens are 32 random
+   bytes, stored only as SHA-256 hashes and looked up by hash through a
+   unique index (the client can't choose the hash, so lookup timing
+   reveals nothing). Passwords use argon2id in PHC format, compared in
+   constant time; a login for an unknown user verifies a dummy hash so it
+   takes as long as a wrong password. Every non-GET request passes the
+   cross-origin check (`http.CrossOriginProtection`). See `SECURITY.md`
+   before changing any of this.
 10. **HTTP API.** Routes under `/api/v1`, JSON only, one error shape.
     Anything not under `/api/`, `/healthz`, or a built asset returns the
     SPA's `index.html`, except missing files under `/_app/`, which 404 so
