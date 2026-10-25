@@ -265,10 +265,10 @@ Docker is the primary distribution, since it's what Unraid, TrueNAS, Synology, P
 | --- | --- | --- |
 | `WATCHT_DATA_DIR` | `/data` | Database, backups, uploads |
 | `WATCHT_LISTEN` | `:8080` | Listen address |
-| `WATCHT_BASE_URL` | | Public URL; needed for OIDC and secure cookies |
+| `WATCHT_BASE_URL` | | Public URL (`scheme://host[:port]`, no path). Trusted by the cross-origin check, so set it when a proxy rewrites `Host`; `https` makes the session cookie `Secure`. Needed for OIDC later |
 | `TMDB_API_KEY` | | Required |
 | `MDBLIST_API_KEY` | | Optional |
-| `WATCHT_TRUSTED_PROXIES` | | CIDRs of reverse proxies |
+| `WATCHT_TRUSTED_PROXIES` | | Comma-separated IPs or CIDRs of reverse proxies. Only their `X-Forwarded-For` (client IP for the login limit) and `X-Forwarded-Proto` (`Secure` cookies) are believed |
 | `WATCHT_IMAGE_CACHE` | `false` | Proxy and cache TMDB images locally |
 | `WATCHT_OIDC_*` | | Optional OIDC settings |
 
@@ -319,6 +319,8 @@ Each milestone ends with something runnable and is merged to `main` before the n
   - Passwords: argon2id with RFC 9106's memory-constrained parameters (64 MiB, 3 passes, 4 lanes), stored in PHC format so the cost can change later. At most two hashes run at once, bounding memory on small machines. At least 8 characters, at most 256 bytes; no composition rules.
   - A login for an unknown user is checked against a dummy hash with the same cost, so response time doesn't reveal which usernames exist.
   - Sessions renew their 30-day expiry at most once a day, so most requests don't write. Expired sessions are deleted at login until the job scheduler exists (M3).
+  - Slice 2 endpoints: `GET /api/v1/auth/session` (whether setup is needed, and the signed-in user; never 401, so the SPA can call it on startup), `POST /api/v1/auth/setup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`. The session cookie is `watcht_session`: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when the request came over HTTPS (directly, via a trusted proxy's `X-Forwarded-Proto`, or with an `https` `WATCHT_BASE_URL`).
+  - Login limit: 10 attempts per client IP (per /64 for IPv6), then one a minute; successful logins don't count. The client IP comes from `X-Forwarded-For` only when the peer is a trusted proxy, read from the right. A login waits at most 10 seconds for a password-hashing slot, then gets 503.
 
 ### M3: Catalog and TMDB
 
