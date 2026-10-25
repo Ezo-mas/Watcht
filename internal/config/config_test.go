@@ -1,9 +1,11 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -48,6 +50,153 @@ func TestLoad(t *testing.T) {
 			}
 			if cfg.DataDir != tt.wantDataDir {
 				t.Errorf("DataDir = %q, want %q", cfg.DataDir, tt.wantDataDir)
+			}
+		})
+	}
+}
+
+func TestLoadBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantURL string
+		wantErr string
+	}{
+		{name: "unset", env: map[string]string{}},
+		{name: "empty", env: map[string]string{"WATCHT_BASE_URL": ""}},
+		{name: "https host", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com"}, wantURL: "https://watcht.example.com"},
+		{name: "trailing slash is dropped", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com/"}, wantURL: "https://watcht.example.com"},
+		{name: "scheme is lowercased", env: map[string]string{"WATCHT_BASE_URL": "HTTPS://watcht.example.com"}, wantURL: "https://watcht.example.com"},
+		{name: "http with port", env: map[string]string{"WATCHT_BASE_URL": "http://192.168.1.10:8080"}, wantURL: "http://192.168.1.10:8080"},
+		{name: "port with trailing slash", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:8443/"}, wantURL: "https://watcht.example.com:8443"},
+		// Normalized to what browsers send in Origin, which the CSRF check
+		// compares as a string.
+		{name: "host is lowercased", env: map[string]string{"WATCHT_BASE_URL": "https://Watcht.Example.com"}, wantURL: "https://watcht.example.com"},
+		{name: "default https port is dropped", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:443"}, wantURL: "https://watcht.example.com"},
+		{name: "default http port is dropped", env: map[string]string{"WATCHT_BASE_URL": "http://watcht.lan:80/"}, wantURL: "http://watcht.lan"},
+		{name: "443 on http is kept", env: map[string]string{"WATCHT_BASE_URL": "http://watcht.lan:443"}, wantURL: "http://watcht.lan:443"},
+		{name: "IPv6 host", env: map[string]string{"WATCHT_BASE_URL": "http://[::1]:8080/"}, wantURL: "http://[::1]:8080"},
+		{name: "no scheme", env: map[string]string{"WATCHT_BASE_URL": "watcht.example.com"}, wantErr: `WATCHT_BASE_URL "watcht.example.com" must start with http:// or https://`},
+		{name: "wrong scheme", env: map[string]string{"WATCHT_BASE_URL": "ftp://watcht.example.com"}, wantErr: `WATCHT_BASE_URL "ftp://watcht.example.com" must start with http:// or https://`},
+		{name: "no host", env: map[string]string{"WATCHT_BASE_URL": "https://"}, wantErr: `WATCHT_BASE_URL "https://" must include a host`},
+		{name: "port without host", env: map[string]string{"WATCHT_BASE_URL": "https://:8080"}, wantErr: `WATCHT_BASE_URL "https://:8080" must include a host`},
+		{name: "empty port", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:"}, wantErr: `WATCHT_BASE_URL "https://watcht.example.com:" has an empty port`},
+		{name: "non-numeric port", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:http"}, wantErr: `WATCHT_BASE_URL "https://watcht.example.com:http" is not a valid URL`},
+		{name: "username", env: map[string]string{"WATCHT_BASE_URL": "https://me@watcht.example.com"}, wantErr: `WATCHT_BASE_URL "https://me@watcht.example.com" must not include a username or password`},
+		{name: "password is redacted", env: map[string]string{"WATCHT_BASE_URL": "https://me:secret@watcht.example.com"}, wantErr: `WATCHT_BASE_URL "https://me:xxxxx@watcht.example.com" must not include a username or password`},
+		{name: "password is redacted before other checks", env: map[string]string{"WATCHT_BASE_URL": "ftp://me:secret@watcht.example.com"}, wantErr: `WATCHT_BASE_URL "ftp://me:xxxxx@watcht.example.com" must not include a username or password`},
+		{name: "query", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com/?a=b"}, wantErr: `WATCHT_BASE_URL "https://watcht.example.com/?a=b" must not have a query`},
+		{name: "empty query", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com/?"}, wantErr: `must not have a query`},
+		{name: "fragment", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com/#top"}, wantErr: `WATCHT_BASE_URL "https://watcht.example.com/#top" must not have a fragment`},
+		{name: "empty fragment", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com#"}, wantErr: `must not have a fragment`},
+		{name: "path", env: map[string]string{"WATCHT_BASE_URL": "https://x/watcht"}, wantErr: `WATCHT_BASE_URL "https://x/watcht" must not have a path: watcht is served at the root`},
+		{name: "double slash path", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com//"}, wantErr: `must not have a path`},
+		{name: "leading space", env: map[string]string{"WATCHT_BASE_URL": " https://watcht.example.com"}, wantErr: `is not a valid URL`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookup := func(k string) (string, bool) {
+				v, ok := tt.env[k]
+				return v, ok
+			}
+			cfg, err := load(lookup)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("load() error = %v, want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("load() error = %v", err)
+			}
+			if tt.wantURL == "" {
+				if cfg.BaseURL != nil {
+					t.Fatalf("BaseURL = %v, want nil", cfg.BaseURL)
+				}
+				return
+			}
+			if cfg.BaseURL == nil {
+				t.Fatalf("BaseURL is nil, want %q", tt.wantURL)
+			}
+			if got := cfg.BaseURL.String(); got != tt.wantURL {
+				t.Errorf("BaseURL = %q, want %q", got, tt.wantURL)
+			}
+		})
+	}
+}
+
+func TestLoadTrustedProxies(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		want    []string
+		wantErr string
+	}{
+		{name: "unset", env: map[string]string{}},
+		{name: "empty", env: map[string]string{"WATCHT_TRUSTED_PROXIES": ""}},
+		{name: "only separators", env: map[string]string{"WATCHT_TRUSTED_PROXIES": " , ,"}},
+		{name: "IPv4 address", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.1"}, want: []string{"10.0.0.1/32"}},
+		{name: "IPv6 address", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "::1"}, want: []string{"::1/128"}},
+		{name: "IPv4 CIDR", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.0/8"}, want: []string{"10.0.0.0/8"}},
+		{name: "IPv4 CIDR host bits are masked", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.1.2.3/8"}, want: []string{"10.0.0.0/8"}},
+		{name: "IPv6 CIDR host bits are masked", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "fd12::1/8"}, want: []string{"fd00::/8"}},
+		{name: "list with spaces and trailing comma", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.0/8, 172.16.0.1, ::1,"}, want: []string{"10.0.0.0/8", "172.16.0.1/32", "::1/128"}},
+		{name: "blank entries are skipped", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.1,,10.0.0.2"}, want: []string{"10.0.0.1/32", "10.0.0.2/32"}},
+		{name: "IPv4-mapped address becomes IPv4", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "::ffff:10.0.0.1"}, want: []string{"10.0.0.1/32"}},
+		{name: "IPv4-mapped CIDR becomes IPv4 CIDR", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "::ffff:10.1.2.0/120"}, want: []string{"10.1.2.0/24"}},
+		{name: "IPv4-mapped CIDR host bits are masked", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "::ffff:10.1.2.3/104"}, want: []string{"10.0.0.0/8"}},
+		{name: "hostname", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "proxy.local"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "proxy.local": is not an IP address or CIDR`},
+		{name: "prefix length too long", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.0/33"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "10.0.0.0/33": is not an IP address or CIDR`},
+		{name: "bad entry after a good one", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "10.0.0.0/8, nope"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "nope": is not an IP address or CIDR`},
+		{name: "IPv6 zone", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "fe80::1%eth0"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "fe80::1%eth0": must not have an IPv6 zone`},
+		{name: "IPv6 zone in CIDR", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "fe80::%eth0/64"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "fe80::%eth0/64": must not have an IPv6 zone`},
+		{name: "IPv4-mapped prefix shorter than /96", env: map[string]string{"WATCHT_TRUSTED_PROXIES": "::ffff:10.0.0.0/8"}, wantErr: `WATCHT_TRUSTED_PROXIES entry "::ffff:10.0.0.0/8": IPv4-mapped IPv6 prefixes must be /96 or longer`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookup := func(k string) (string, bool) {
+				v, ok := tt.env[k]
+				return v, ok
+			}
+			cfg, err := load(lookup)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("load() error = %v, want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("load() error = %v", err)
+			}
+			if tt.want == nil && cfg.TrustedProxies != nil {
+				t.Fatalf("TrustedProxies = %v, want nil", cfg.TrustedProxies)
+			}
+			var got []string
+			for _, p := range cfg.TrustedProxies {
+				got = append(got, p.String())
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("TrustedProxies = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBaseOrigin(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL *url.URL
+		want    string
+	}{
+		{name: "unset", want: ""},
+		{name: "https host", baseURL: &url.URL{Scheme: "https", Host: "watcht.example.com"}, want: "https://watcht.example.com"},
+		{name: "http host and port", baseURL: &url.URL{Scheme: "http", Host: "192.168.1.10:8080"}, want: "http://192.168.1.10:8080"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{BaseURL: tt.baseURL}
+			if got := cfg.BaseOrigin(); got != tt.want {
+				t.Errorf("BaseOrigin() = %q, want %q", got, tt.want)
 			}
 		})
 	}
