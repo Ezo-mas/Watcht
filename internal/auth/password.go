@@ -28,8 +28,8 @@ const (
 	saltLen = 16
 	keyLen  = 32
 
-	// Password length limits, in bytes for the maximum (it bounds the work
-	// done per login attempt) and in characters for the minimum.
+	// Password length limits: the minimum in characters, the maximum in
+	// bytes (a sanity limit; argon2's cost barely depends on length).
 	minPasswordChars = 8
 	maxPasswordBytes = 256
 )
@@ -39,6 +39,9 @@ const (
 type hasher struct {
 	params Argon2Params
 	sem    chan struct{}
+	// testHookVerify, if set, is called on every verify. Tests use it to
+	// check which login paths do the hashing work.
+	testHookVerify func()
 }
 
 func newHasher(p Argon2Params, concurrency int) *hasher {
@@ -64,8 +67,8 @@ func (h *hasher) hash(ctx context.Context, password string) (string, error) {
 	if err := h.acquire(ctx); err != nil {
 		return "", err
 	}
+	defer h.release()
 	key := argon2.IDKey([]byte(password), salt, h.params.Time, h.params.Memory, h.params.Threads, keyLen)
-	h.release()
 	enc := base64.RawStdEncoding
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, h.params.Memory, h.params.Time, h.params.Threads,
@@ -85,6 +88,9 @@ func (h *hasher) dummyHash() string {
 // verify reports whether password matches encoded, using the parameters
 // stored in encoded.
 func (h *hasher) verify(ctx context.Context, encoded, password string) (bool, error) {
+	if h.testHookVerify != nil {
+		h.testHookVerify()
+	}
 	p, salt, want, err := decodeHash(encoded)
 	if err != nil {
 		return false, err
@@ -92,18 +98,20 @@ func (h *hasher) verify(ctx context.Context, encoded, password string) (bool, er
 	if err := h.acquire(ctx); err != nil {
 		return false, err
 	}
+	defer h.release()
 	got := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Threads, uint32(len(want))) //nolint:gosec // len(want) is bounded by decodeHash
-	h.release()
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
 var errBadHash = errors.New("malformed password hash")
 
 // Bounds on parameters read back from a stored hash, so a corrupted or
-// tampered row can't make a login allocate gigabytes or run for minutes.
+// tampered row can't make a login allocate much more than the defaults or
+// run for long on a small machine. Raising the defaults past these needs
+// raising them too.
 const (
-	maxMemory  = 1024 * 1024 // 1 GiB
-	maxTime    = 16
+	maxMemory  = 256 * 1024 // 256 MiB
+	maxTime    = 10
 	maxStorage = 64 // bytes of salt or key
 )
 

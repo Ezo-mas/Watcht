@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"time"
 
@@ -36,7 +37,8 @@ var (
 
 const (
 	// DefaultSessionTTL is how long a session lasts without use. Each use
-	// slides the expiry forward (at most once per sessionRenewEvery).
+	// slides the expiry forward, at most once per sessionRenewEvery (or
+	// half the TTL, if that's shorter).
 	DefaultSessionTTL = 30 * 24 * time.Hour
 	sessionRenewEvery = 24 * time.Hour
 
@@ -52,6 +54,9 @@ type Options struct {
 	Argon2 Argon2Params
 	// Now is the clock.
 	Now func() time.Time
+	// Logger receives errors that don't fail the request (a failed session
+	// renewal). Nil discards them.
+	Logger *slog.Logger
 }
 
 // Service implements accounts and sign-in on top of the database.
@@ -61,7 +66,9 @@ type Service struct {
 	write      *sqlc.Queries
 	hasher     *hasher
 	sessionTTL time.Duration
+	renewEvery time.Duration
 	now        func() time.Time
+	logger     *slog.Logger
 
 	// dummyHash is verified against when a login names an unknown user, so
 	// a missing account takes as long to reject as a wrong password. It has
@@ -69,7 +76,8 @@ type Service struct {
 	dummyHash string
 }
 
-// New returns a Service using d.
+// New returns a Service using d. It panics if opts.Argon2 is set but
+// invalid, which is a programming error.
 func New(d *db.DB, opts Options) *Service {
 	s := &Service{
 		db:         d,
@@ -78,16 +86,27 @@ func New(d *db.DB, opts Options) *Service {
 		hasher:     newHasher(opts.Argon2, hashConcurrency),
 		sessionTTL: opts.SessionTTL,
 		now:        opts.Now,
+		logger:     opts.Logger,
 	}
 	if opts.Argon2 == (Argon2Params{}) {
 		s.hasher.params = defaultArgon2Params
 	}
 	s.dummyHash = s.hasher.dummyHash()
+	// The dummy hash must decode like a real one, or unknown users would
+	// fail differently from wrong passwords. This also rejects parameters
+	// argon2 would panic on.
+	if _, _, _, err := decodeHash(s.dummyHash); err != nil {
+		panic(fmt.Sprintf("auth: invalid Argon2 parameters %+v", s.hasher.params))
+	}
 	if s.sessionTTL == 0 {
 		s.sessionTTL = DefaultSessionTTL
 	}
+	s.renewEvery = min(sessionRenewEvery, s.sessionTTL/2)
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.logger == nil {
+		s.logger = slog.New(slog.DiscardHandler)
 	}
 	return s
 }
@@ -231,7 +250,8 @@ func (s *Service) createSession(ctx context.Context, q *sqlc.Queries, u User, no
 
 // Authenticate returns the session for a token from a cookie, renewing its
 // expiry when it's been more than a day since the last renewal. The
-// returned Session has no Token.
+// returned Session has no Token. A failed renewal is logged, not returned:
+// the session is still valid, and renewal is retried on the next request.
 func (s *Service) Authenticate(ctx context.Context, token string) (Session, error) {
 	hash, ok := hashToken(token)
 	if !ok {
@@ -254,12 +274,13 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		ExpiresAt: expires,
 	}
 	// Renew at most once a day, so most requests don't write.
-	if newExpiry := now.Add(s.sessionTTL).UTC().Truncate(time.Second); newExpiry.Sub(expires) >= sessionRenewEvery {
+	if newExpiry := now.Add(s.sessionTTL).UTC().Truncate(time.Second); newExpiry.Sub(expires) >= s.renewEvery {
 		err := s.write.ExtendSession(ctx, sqlc.ExtendSessionParams{ID: row.ID, ExpiresAt: db.Timestamp(newExpiry)})
 		if err != nil {
-			return Session{}, fmt.Errorf("renew session: %w", err)
+			s.logger.Warn("renew session", "user_id", row.UserID, "err", err)
+		} else {
+			sess.ExpiresAt, sess.Renewed = newExpiry, true
 		}
-		sess.ExpiresAt, sess.Renewed = newExpiry, true
 	}
 	return sess, nil
 }

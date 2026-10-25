@@ -118,6 +118,8 @@ func TestDecodeHashRejects(t *testing.T) {
 		"zero threads":     with("m=64,t=1,p=0"),
 		"memory too small": with("m=8,t=1,p=2"),
 		"huge memory":      with("m=4194304,t=1,p=1"),
+		"memory above cap": with("m=262145,t=1,p=1"),
+		"time above cap":   with("m=64,t=11,p=1"),
 		"bad salt":         "$argon2id$v=19$m=64,t=1,p=1$!!$" + key,
 		"short key":        "$argon2id$v=19$m=64,t=1,p=1$" + salt + "$AAAA",
 	}

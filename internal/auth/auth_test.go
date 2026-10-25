@@ -300,3 +300,115 @@ func TestDeletingAUserEndsTheirSessions(t *testing.T) {
 		t.Errorf("sessions left = %d, %v; want 0 (ON DELETE CASCADE)", n, err)
 	}
 }
+
+// Every failing login must do the same password-hashing work, or response
+// times would show which usernames exist.
+func TestLoginAlwaysHashes(t *testing.T) {
+	s, d, _ := newService(t)
+	ctx := context.Background()
+	if _, err := s.Setup(ctx, "alice", "alice password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlc.New(d.Write).CreateUser(ctx, sqlc.CreateUserParams{Username: "nopass", CreatedAt: db.Timestamp(time.Now())}); err != nil {
+		t.Fatal(err)
+	}
+	var verifies int
+	s.hasher.testHookVerify = func() { verifies++ }
+
+	for _, tc := range []struct {
+		name, username, password string
+		want                     int
+	}{
+		{"right password", "alice", "alice password", 1},
+		{"wrong password", "alice", "wrong password", 1},
+		{"unknown user", "bob", "alice password", 1},
+		{"no password set", "nopass", "anything at all", 1},
+		// Over-long input is the exception: it's rejected before any work.
+		{"over-long username", strings.Repeat("a", 65), "alice password", 0},
+		{"over-long password", "alice", strings.Repeat("a", 257), 0},
+	} {
+		verifies = 0
+		_, _ = s.Login(ctx, tc.username, tc.password)
+		if verifies != tc.want {
+			t.Errorf("%s: %d password verifications, want %d", tc.name, verifies, tc.want)
+		}
+	}
+}
+
+func TestNewRejectsInvalidArgon2Params(t *testing.T) {
+	d := dbtest.New(t)
+	for _, p := range []Argon2Params{
+		{Memory: 64 * 1024}, // partly set: no time or threads
+		{Memory: 64, Time: 1, Threads: 0},
+		{Memory: 512 * 1024, Time: 1, Threads: 1}, // above the decode bound
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("New with %+v didn't panic", p)
+				}
+			}()
+			New(d, Options{Argon2: p})
+		}()
+	}
+}
+
+func TestSessionRenewalBoundary(t *testing.T) {
+	s, _, clock := newService(t)
+	ctx := context.Background()
+	sess, err := s.Setup(ctx, "admin", "long enough")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.Advance(sessionRenewEvery - time.Second)
+	if got, err := s.Authenticate(ctx, sess.Token); err != nil || got.Renewed {
+		t.Errorf("1s before a day: Renewed = %v, %v; want false", got.Renewed, err)
+	}
+	clock.Advance(time.Second)
+	if got, err := s.Authenticate(ctx, sess.Token); err != nil || !got.Renewed {
+		t.Errorf("exactly a day: Renewed = %v, %v; want true", got.Renewed, err)
+	}
+}
+
+// A TTL shorter than two days renews every half TTL, so it still slides.
+func TestShortSessionTTLRenews(t *testing.T) {
+	d := dbtest.New(t)
+	clock := newClock()
+	s := New(d, Options{Argon2: cheap, Now: clock.Now, SessionTTL: 2 * time.Hour})
+	ctx := context.Background()
+	sess, err := s.Setup(ctx, "admin", "long enough")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock.Advance(time.Hour)
+	got, err := s.Authenticate(ctx, sess.Token)
+	if err != nil || !got.Renewed || !got.ExpiresAt.Equal(clock.Now().Add(2*time.Hour)) {
+		t.Fatalf("after 1h of a 2h TTL: %+v, %v; want renewed to now + 2h", got, err)
+	}
+	clock.Advance(90 * time.Minute) // past the original expiry
+	if _, err := s.Authenticate(ctx, sess.Token); err != nil {
+		t.Errorf("after the original expiry: %v; want the renewed session to work", err)
+	}
+}
+
+// A renewal that fails to write doesn't sign the user out.
+func TestFailedRenewalKeepsSession(t *testing.T) {
+	s, d, clock := newService(t)
+	ctx := context.Background()
+	sess, err := s.Setup(ctx, "admin", "long enough")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Write.ExecContext(ctx, `CREATE TRIGGER fail_renewal BEFORE UPDATE ON sessions
+		BEGIN SELECT RAISE(ABORT, 'renewal blocked by test'); END`); err != nil {
+		t.Fatal(err)
+	}
+	clock.Advance(2 * sessionRenewEvery)
+	got, err := s.Authenticate(ctx, sess.Token)
+	if err != nil {
+		t.Fatalf("Authenticate with a failing renewal: %v; want the session", err)
+	}
+	if got.Renewed || !got.ExpiresAt.Equal(sess.ExpiresAt) {
+		t.Errorf("got Renewed = %v, expires %v; want not renewed, original expiry %v", got.Renewed, got.ExpiresAt, sess.ExpiresAt)
+	}
+}
