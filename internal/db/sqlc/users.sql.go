@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countUsers = `-- name: CountUsers :one
@@ -21,30 +22,49 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (username, created_at)
-VALUES (?1, ?2)
-RETURNING id, username, created_at
+INSERT INTO users (username, password_hash, is_admin, created_at)
+VALUES (?1, ?2, ?3, ?4)
+RETURNING id, username, created_at, password_hash, is_admin
 `
 
 type CreateUserParams struct {
-	Username  string
-	CreatedAt string
+	Username     string
+	PasswordHash sql.NullString
+	IsAdmin      int64
+	CreatedAt    string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser, arg.Username, arg.CreatedAt)
+	row := q.db.QueryRowContext(ctx, createUser,
+		arg.Username,
+		arg.PasswordHash,
+		arg.IsAdmin,
+		arg.CreatedAt,
+	)
 	var i User
-	err := row.Scan(&i.ID, &i.Username, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.CreatedAt,
+		&i.PasswordHash,
+		&i.IsAdmin,
+	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, created_at FROM users WHERE username = ?1
+SELECT id, username, created_at, password_hash, is_admin FROM users WHERE username = ?1
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
 	row := q.db.QueryRowContext(ctx, getUserByUsername, username)
 	var i User
-	err := row.Scan(&i.ID, &i.Username, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.CreatedAt,
+		&i.PasswordHash,
+		&i.IsAdmin,
+	)
 	return i, err
 }
