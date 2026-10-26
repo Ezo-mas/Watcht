@@ -1,5 +1,5 @@
 // Package auth owns accounts and sign-in: password hashing, first-run
-// setup, login, and sessions.
+// setup, login, sessions, and account management (accounts.go).
 //
 // Secrets are never stored or logged in the clear: passwords are argon2id
 // hashes, and session tokens are stored as SHA-256 hashes. See SECURITY.md
@@ -121,6 +121,7 @@ type User struct {
 // Session is a sign-in session. Token is the secret for the cookie; it is
 // set only when the session is created.
 type Session struct {
+	ID        int64
 	User      User
 	Token     string
 	ExpiresAt time.Time
@@ -236,7 +237,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (Session
 func (s *Service) createSession(ctx context.Context, q *sqlc.Queries, u User, now time.Time) (Session, error) {
 	token, hash := newToken()
 	expires := now.Add(s.sessionTTL)
-	err := q.CreateSession(ctx, sqlc.CreateSessionParams{
+	id, err := q.CreateSession(ctx, sqlc.CreateSessionParams{
 		TokenHash: hash,
 		UserID:    u.ID,
 		CreatedAt: db.Timestamp(now),
@@ -245,7 +246,7 @@ func (s *Service) createSession(ctx context.Context, q *sqlc.Queries, u User, no
 	if err != nil {
 		return Session{}, fmt.Errorf("create session: %w", err)
 	}
-	return Session{User: u, Token: token, ExpiresAt: expires.UTC().Truncate(time.Second)}, nil
+	return Session{ID: id, User: u, Token: token, ExpiresAt: expires.UTC().Truncate(time.Second)}, nil
 }
 
 // Authenticate returns the session for a token from a cookie, renewing its
@@ -270,6 +271,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		return Session{}, err
 	}
 	sess := Session{
+		ID:        row.ID,
 		User:      User{ID: row.UserID, Username: row.Username, IsAdmin: row.IsAdmin == 1},
 		ExpiresAt: expires,
 	}
