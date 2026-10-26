@@ -21,6 +21,7 @@ export const load: LayoutLoad = async ({ url, fetch, depends }) => {
 	try {
 		session = await getSession(fetch);
 	} catch (e) {
+		// Status 0: no answer, or not watcht's (bad_response).
 		if (e instanceof ApiError && (e.status === 0 || e.status >= 500)) {
 			return { session: { setup_required: false, user: null }, unreachable: e };
 		}

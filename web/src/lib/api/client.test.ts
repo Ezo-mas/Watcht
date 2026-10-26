@@ -58,6 +58,23 @@ describe('api', () => {
 		expect(err).toMatchObject({ status: 502, code: 'http_error' });
 	});
 
+	it('handles JSON without the error shape', async () => {
+		const err = await api('GET', '/api/v1/x', undefined, respond(500, { message: 'oops' })).catch(
+			(e: unknown) => e
+		);
+		expect(err).toMatchObject({ status: 500, code: 'http_error' });
+	});
+
+	it('reports a success response that is not JSON as unreachable', async () => {
+		const err = await api(
+			'GET',
+			'/api/v1/x',
+			undefined,
+			respond(200, '<html>login portal</html>', 'text/html')
+		).catch((e: unknown) => e);
+		expect(err).toMatchObject({ status: 0, code: 'bad_response' });
+	});
+
 	it('reports a network failure', async () => {
 		const fetchFn = vi.fn(async () => {
 			throw new TypeError('Failed to fetch');

@@ -49,7 +49,17 @@ export async function api<T>(
 
 	if (res.ok) {
 		if (res.status === 204) return undefined as T;
-		return (await res.json()) as T;
+		try {
+			return (await res.json()) as T;
+		} catch {
+			// Not watcht's JSON: something in between (a misrouted proxy)
+			// answered instead.
+			throw new ApiError(
+				0,
+				'bad_response',
+				"The server's answer wasn't from watcht. Check the proxy."
+			);
+		}
 	}
 
 	const err = await errorFrom(res);

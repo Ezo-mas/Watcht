@@ -27,7 +27,13 @@ describe('guard', () => {
 		[signedIn, '/', null],
 		[signedIn, '/history', null],
 		[signedIn, '/login', '/'],
-		[signedIn, '/setup', '/']
+		[signedIn, '/setup', '/'],
+		// routes also match with a trailing slash
+		[signedIn, '/login/', '/'],
+		[signedIn, '/setup/', '/'],
+		[signedOut, '/login/', null],
+		[signedOut, '/setup/', '/login'],
+		[fresh, '/setup/', null]
 	])('%o at %s goes to %s', (session, path, want) => {
 		expect(guard(session, at(path))).toBe(want);
 	});
@@ -47,7 +53,12 @@ describe('safeNext', () => {
 		['https://evil.example', '/'],
 		['javascript:alert(1)', '/'],
 		['history', '/'],
-		['/%2F%2Fevil.example', '/%2F%2Fevil.example']
+		['/%2F%2Fevil.example', '/%2F%2Fevil.example'],
+		// dot segments that collapse into "//"
+		['/.//evil.example', '/'],
+		['/a/..//evil.example', '/'],
+		['/%2e//evil.example', '/'],
+		['/./\t/evil.example', '/']
 	])('%s → %s', (next, want) => {
 		expect(safeNext(next)).toBe(want);
 	});

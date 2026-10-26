@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { logout } from '#lib/api/auth.js';
+	import { ApiError } from '#lib/api/client.js';
 	import Button from '#lib/components/Button.svelte';
 	import Wordmark from '#lib/components/Wordmark.svelte';
 	import type { LayoutProps } from './$types';
@@ -9,12 +10,25 @@
 	let { data, children }: LayoutProps = $props();
 	const user = $derived(data.session.user);
 
+	let signingOut = $state(false);
+	let signOutError = $state('');
+
+	// Only leave once the server has ended the session (or it was already
+	// gone): on a shared device, "signed out" must be true.
 	async function signOut() {
+		signingOut = true;
+		signOutError = '';
 		try {
 			await logout();
-		} finally {
-			await goto(resolve('/login'), { invalidate: ['app:session'] });
+		} catch (e) {
+			if (!(e instanceof ApiError && e.status === 401)) {
+				signOutError = "Couldn't sign out. Try again.";
+				signingOut = false;
+				return;
+			}
 		}
+		await goto(resolve('/login'), { invalidate: ['app:session'] });
+		signingOut = false;
 	}
 </script>
 
@@ -39,7 +53,10 @@
 							><span class="sr-only">Signed in as </span>{user.username}</span
 						>
 					</span>
-					<Button variant="quiet" onclick={signOut}>Sign out</Button>
+					{#if signOutError}
+						<span role="alert" class="text-danger">{signOutError}</span>
+					{/if}
+					<Button variant="quiet" busy={signingOut} onclick={signOut}>Sign out</Button>
 				</div>
 			{/if}
 		</div>

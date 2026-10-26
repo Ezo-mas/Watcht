@@ -10,7 +10,9 @@ const publicPaths = new Set(['/login', '/setup']);
  * - signed in, /login and /setup go to the dashboard.
  */
 export function guard(session: SessionStatus, url: URL): string | null {
-	const path = url.pathname;
+	// Routes also match with a trailing slash ("/login/"), so compare
+	// without one.
+	const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
 	if (session.setup_required) return path === '/setup' ? null : '/setup';
 	if (session.user) return publicPaths.has(path) ? '/' : null;
 	if (path === '/login') return null;
@@ -32,6 +34,9 @@ export function safeNext(next: string | null): string {
 	} catch {
 		return '/';
 	}
-	if (url.origin !== base) return '/';
+	// Dot segments can collapse into "//" ("/.//evil.example"), which a
+	// browser would read as another host: check the result, not just the
+	// input.
+	if (url.origin !== base || url.pathname.startsWith('//')) return '/';
 	return url.pathname + url.search + url.hash;
 }

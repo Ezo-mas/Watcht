@@ -19,9 +19,12 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
   just errors. Components don't call `fetch` directly.
 - **Auth routing** lives in the root `+layout.ts` (`load` calls
   `getSession` and `guard` from `web/src/lib/guard.ts`). Signed-in pages
-  go under `src/routes/(app)/`. After a sign-in or sign-out, call
-  `invalidate('app:session')` so the guard runs again. Never redirect to
-  a `?next=` value without `safeNext()`.
+  go under `src/routes/(app)/`. After a sign-in or sign-out, navigate with
+  `goto(target, { invalidate: ['app:session'] })` so the guard runs again
+  against the new session (read anything you need from the current URL
+  first). Never redirect to a `?next=` value without `safeNext()`. If the
+  session check can't reach the server, the root layout shows a "can't
+  reach watcht" card itself: an error page would re-run the same load.
 - **Imports and links.** `#lib/...` is a package subpath import, so it
   needs the file extension (`#lib/api/client.js`). Internal links and
   `goto` go through `resolve()` from `$app/paths` (lint enforces it): a

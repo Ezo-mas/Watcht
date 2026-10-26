@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { setup } from '#lib/api/auth.js';
 	import { ApiError } from '#lib/api/client.js';
@@ -28,6 +28,11 @@
 			await setup(username, password);
 			await goto(resolve('/(app)'), { invalidate: ['app:session'] });
 		} catch (e) {
+			if (e instanceof ApiError && e.code === 'setup_done') {
+				// Finished in another tab or by someone else: move on to sign-in.
+				await invalidate('app:session');
+				return;
+			}
 			error = e instanceof ApiError ? e.message : 'Something went wrong.';
 		} finally {
 			busy = false;
