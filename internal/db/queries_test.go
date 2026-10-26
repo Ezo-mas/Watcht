@@ -243,7 +243,7 @@ func TestSessionTokenHashLength(t *testing.T) {
 			ctx := context.Background()
 			w := sqlc.New(d.Write)
 			user := createUser(t, w, "alice")
-			err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, tt.length), UserID: user.ID, CreatedAt: now, ExpiresAt: later})
+			_, err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, tt.length), UserID: user.ID, CreatedAt: now, ExpiresAt: later})
 			if tt.ok {
 				if err != nil {
 					t.Fatalf("CreateSession with a %d-byte token_hash = %v, want success", tt.length, err)
@@ -261,15 +261,16 @@ func TestSessionTokenHashIsUnique(t *testing.T) {
 	w := sqlc.New(d.Write)
 	user := createUser(t, w, "alice")
 	session := sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, 32), UserID: user.ID, CreatedAt: now, ExpiresAt: later}
-	if err := w.CreateSession(ctx, session); err != nil {
+	if _, err := w.CreateSession(ctx, session); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	requireConstraint(t, w.CreateSession(ctx, session), "UNIQUE")
+	_, err := w.CreateSession(ctx, session)
+	requireConstraint(t, err, "UNIQUE")
 }
 
 func TestSessionUserMustExist(t *testing.T) {
 	d := dbtest.New(t)
-	err := sqlc.New(d.Write).CreateSession(context.Background(), sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, 32), UserID: 999, CreatedAt: now, ExpiresAt: later})
+	_, err := sqlc.New(d.Write).CreateSession(context.Background(), sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, 32), UserID: 999, CreatedAt: now, ExpiresAt: later})
 	requireConstraint(t, err, "FOREIGN KEY")
 }
 
@@ -293,7 +294,7 @@ func TestSessionTimestampFormat(t *testing.T) {
 			d := dbtest.New(t)
 			w := sqlc.New(d.Write)
 			user := createUser(t, w, "alice")
-			err := w.CreateSession(context.Background(), sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, 32), UserID: user.ID, CreatedAt: tt.createdAt, ExpiresAt: tt.expiresAt})
+			_, err := w.CreateSession(context.Background(), sqlc.CreateSessionParams{TokenHash: bytes.Repeat([]byte{1}, 32), UserID: user.ID, CreatedAt: tt.createdAt, ExpiresAt: tt.expiresAt})
 			if tt.ok {
 				if err != nil {
 					t.Fatalf("CreateSession = %v, want success", err)
@@ -328,7 +329,7 @@ func TestGetSession(t *testing.T) {
 			if err != nil {
 				t.Fatalf("CreateUser: %v", err)
 			}
-			if err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: root.ID, CreatedAt: now, ExpiresAt: tt.expiresAt}); err != nil {
+			if _, err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: root.ID, CreatedAt: now, ExpiresAt: tt.expiresAt}); err != nil {
 				t.Fatalf("CreateSession: %v", err)
 			}
 			got, err := r.GetSession(ctx, sqlc.GetSessionParams{TokenHash: tt.lookup, Now: now})
@@ -355,7 +356,7 @@ func TestExtendSession(t *testing.T) {
 	r := sqlc.New(d.Read)
 	user := createUser(t, w, "alice")
 	token := bytes.Repeat([]byte{1}, 32)
-	if err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: user.ID, CreatedAt: now, ExpiresAt: later}); err != nil {
+	if _, err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: user.ID, CreatedAt: now, ExpiresAt: later}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	got, err := r.GetSession(ctx, sqlc.GetSessionParams{TokenHash: token, Now: now})
@@ -385,7 +386,7 @@ func TestDeleteSession(t *testing.T) {
 	mine := bytes.Repeat([]byte{1}, 32)
 	other := bytes.Repeat([]byte{2}, 32)
 	for _, token := range [][]byte{mine, other} {
-		if err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: user.ID, CreatedAt: now, ExpiresAt: later}); err != nil {
+		if _, err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: user.ID, CreatedAt: now, ExpiresAt: later}); err != nil {
 			t.Fatalf("CreateSession: %v", err)
 		}
 	}
@@ -418,7 +419,7 @@ func TestDeleteExpiredSessions(t *testing.T) {
 	tokens := make([][]byte, len(tests))
 	for i, tt := range tests {
 		tokens[i] = bytes.Repeat([]byte{byte(i + 1)}, 32)
-		if err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: tokens[i], UserID: user.ID, CreatedAt: now, ExpiresAt: tt.expiresAt}); err != nil {
+		if _, err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: tokens[i], UserID: user.ID, CreatedAt: now, ExpiresAt: tt.expiresAt}); err != nil {
 			t.Fatalf("CreateSession(%s): %v", tt.name, err)
 		}
 	}
@@ -439,7 +440,7 @@ func TestDeletingUserDeletesSessions(t *testing.T) {
 	r := sqlc.New(d.Read)
 	user := createUser(t, w, "alice")
 	token := bytes.Repeat([]byte{1}, 32)
-	if err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: user.ID, CreatedAt: now, ExpiresAt: later}); err != nil {
+	if _, err := w.CreateSession(ctx, sqlc.CreateSessionParams{TokenHash: token, UserID: user.ID, CreatedAt: now, ExpiresAt: later}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	if !sessionStored(t, r, token) {
@@ -451,5 +452,25 @@ func TestDeletingUserDeletesSessions(t *testing.T) {
 	}
 	if sessionStored(t, r, token) {
 		t.Error("session survived the deletion of its user")
+	}
+}
+
+func TestIsUniqueViolation(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	w := sqlc.New(d.Write)
+	if _, err := w.CreateUser(ctx, sqlc.CreateUserParams{Username: "alice", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := w.CreateUser(ctx, sqlc.CreateUserParams{Username: "ALICE", CreatedAt: now})
+	if !db.IsUniqueViolation(err) {
+		t.Errorf("duplicate username: IsUniqueViolation(%v) = false", err)
+	}
+	_, err = w.CreateUser(ctx, sqlc.CreateUserParams{Username: "bad name", CreatedAt: now})
+	if err == nil || db.IsUniqueViolation(err) {
+		t.Errorf("CHECK failure: IsUniqueViolation(%v) = true, want false", err)
+	}
+	if db.IsUniqueViolation(nil) || db.IsUniqueViolation(sql.ErrNoRows) {
+		t.Error("IsUniqueViolation is true for a non-constraint error")
 	}
 }
