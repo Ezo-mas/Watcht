@@ -8,6 +8,14 @@ import (
 	"database/sql"
 )
 
+type ApiToken struct {
+	ID        int64
+	UserID    int64
+	Name      string
+	TokenHash []byte
+	CreatedAt string
+}
+
 type Session struct {
 	ID        int64
 	TokenHash []byte
