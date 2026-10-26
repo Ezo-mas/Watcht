@@ -86,10 +86,10 @@ func serve(stderr io.Writer) int {
 	}()
 
 	logger.Info("starting watcht", "version", version, "data_dir", cfg.DataDir)
-	if len(cfg.TrustedProxies) > 0 && cfg.BaseURL == nil {
+	if len(cfg.TrustedProxies) > 0 && (cfg.BaseURL == nil || cfg.BaseURL.Scheme != "https") {
 		// Behind a TLS-terminating proxy, the scheme is only known from its
 		// X-Forwarded-Proto header; if it doesn't send one, cookies lose Secure.
-		logger.Warn("WATCHT_TRUSTED_PROXIES is set but WATCHT_BASE_URL isn't; set WATCHT_BASE_URL=https://<your host> so session cookies are always Secure")
+		logger.Warn("WATCHT_TRUSTED_PROXIES is set but WATCHT_BASE_URL isn't an https URL; if the proxy serves HTTPS, set WATCHT_BASE_URL=https://<your host> so session cookies are always Secure")
 	}
 	database, err := openDatabase(ctx, cfg, logger)
 	if err != nil {

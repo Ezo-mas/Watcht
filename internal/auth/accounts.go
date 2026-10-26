@@ -31,9 +31,16 @@ type Account struct {
 	CreatedAt time.Time
 }
 
+// Account management runs in two steps: slow work (password hashing)
+// first, then a write transaction that re-checks everything it relies on.
+// Checks made before the transaction can be stale by the time it runs: the
+// actor may have been demoted or deleted (and their ID reused), or the
+// password changed. The actor is re-checked through their session's token
+// hash, which, unlike an ID, is never reused.
+
 // ListAccounts returns every account, by username. Admins only.
-func (s *Service) ListAccounts(ctx context.Context, actor User) ([]Account, error) {
-	if !actor.IsAdmin {
+func (s *Service) ListAccounts(ctx context.Context, actor Session) ([]Account, error) {
+	if !actor.User.IsAdmin {
 		return nil, ErrForbidden
 	}
 	rows, err := s.read.ListUsers(ctx)
@@ -53,8 +60,8 @@ func (s *Service) ListAccounts(ctx context.Context, actor User) ([]Account, erro
 
 // CreateAccount adds a household account. Admins only; there's no public
 // sign-up.
-func (s *Service) CreateAccount(ctx context.Context, actor User, username, password string, isAdmin bool) (Account, error) {
-	if !actor.IsAdmin {
+func (s *Service) CreateAccount(ctx context.Context, actor Session, username, password string, isAdmin bool) (Account, error) {
+	if !actor.User.IsAdmin {
 		return Account{}, ErrForbidden
 	}
 	if err := validateUsername(username); err != nil {
@@ -71,73 +78,113 @@ func (s *Service) CreateAccount(ctx context.Context, actor User, username, passw
 	if isAdmin {
 		admin = 1
 	}
-	u, err := s.write.CreateUser(ctx, sqlc.CreateUserParams{
-		Username:     username,
-		PasswordHash: sql.NullString{String: hash, Valid: true},
-		IsAdmin:      admin,
-		CreatedAt:    db.Timestamp(s.now()),
+	var created sqlc.User
+	err = s.inTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := s.recheckAdmin(ctx, q, actor); err != nil {
+			return err
+		}
+		created, err = q.CreateUser(ctx, sqlc.CreateUserParams{
+			Username:     username,
+			PasswordHash: sql.NullString{String: hash, Valid: true},
+			IsAdmin:      admin,
+			CreatedAt:    db.Timestamp(s.now()),
+		})
+		if db.IsUniqueViolation(err) {
+			return ErrUsernameTaken
+		}
+		if err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		return nil
 	})
-	if db.IsUniqueViolation(err) {
-		return Account{}, ErrUsernameTaken
-	}
 	if err != nil {
-		return Account{}, fmt.Errorf("create user: %w", err)
+		return Account{}, err
 	}
-	return toAccount(u)
+	return toAccount(created)
 }
 
 // DeleteAccount deletes an account with its sessions (and, through foreign
-// keys, everything else it owns). Admins only, and not their own account,
-// so at least one admin always remains.
-func (s *Service) DeleteAccount(ctx context.Context, actor User, id int64) error {
-	if !actor.IsAdmin {
+// keys, everything else it owns). Admins only, and not their own account.
+// Because the actor is re-checked in the same transaction, two admins
+// deleting each other at once can't both succeed: one admin always
+// remains.
+func (s *Service) DeleteAccount(ctx context.Context, actor Session, id int64) error {
+	if !actor.User.IsAdmin {
 		return ErrForbidden
 	}
-	if id == actor.ID {
-		return ErrSelf
-	}
-	n, err := s.write.DeleteUser(ctx, id)
-	if err != nil {
-		return fmt.Errorf("delete user %d: %w", id, err)
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.inTx(ctx, func(q *sqlc.Queries) error {
+		admin, err := s.recheckAdmin(ctx, q, actor)
+		if err != nil {
+			return err
+		}
+		if id == admin.ID {
+			return ErrSelf
+		}
+		n, err := q.DeleteUser(ctx, id)
+		if err != nil {
+			return fmt.Errorf("delete user %d: %w", id, err)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // ResetPassword sets another account's password, for someone who forgot
 // theirs, and signs that account out everywhere. Admins only; an admin
 // changes their own password with ChangePassword.
-func (s *Service) ResetPassword(ctx context.Context, actor User, id int64, password string) error {
-	if !actor.IsAdmin {
+func (s *Service) ResetPassword(ctx context.Context, actor Session, id int64, password string) error {
+	if !actor.User.IsAdmin {
 		return ErrForbidden
 	}
-	if id == actor.ID {
+	if id == actor.User.ID {
 		return ErrSelf
 	}
 	if err := validatePassword(password); err != nil {
 		return err
 	}
-	return s.setPassword(ctx, id, password, 0)
+	hash, err := s.hasher.hash(ctx, password)
+	if err != nil {
+		return err
+	}
+	return s.inTx(ctx, func(q *sqlc.Queries) error {
+		admin, err := s.recheckAdmin(ctx, q, actor)
+		if err != nil {
+			return err
+		}
+		if id == admin.ID {
+			return ErrSelf
+		}
+		n, err := q.SetPasswordHash(ctx, sqlc.SetPasswordHashParams{ID: id, PasswordHash: sql.NullString{String: hash, Valid: true}})
+		if err != nil {
+			return fmt.Errorf("set password for user %d: %w", id, err)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return endSessions(ctx, q, id, 0)
+	})
 }
 
 // ChangePassword changes the signed-in user's own password after checking
-// the current one, and signs out every other session (keepSessionID stays
-// signed in). A wrong current password is ErrInvalidCredentials.
-func (s *Service) ChangePassword(ctx context.Context, actor User, keepSessionID int64, current, password string) error {
+// the current one, and signs out every other session; actor's session
+// stays signed in. A wrong current password is ErrInvalidCredentials. If
+// the password changes in the meantime (another change, or an admin
+// reset), this one fails rather than overwriting it.
+func (s *Service) ChangePassword(ctx context.Context, actor Session, current, password string) error {
 	if len(current) > maxPasswordBytes {
 		return ErrInvalidCredentials
 	}
 	if err := validatePassword(password); err != nil {
 		return err
 	}
-	u, err := s.read.GetUserByID(ctx, actor.ID)
+	u, err := s.read.GetUserByID(ctx, actor.User.ID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return ErrNoSession
 	}
 	if err != nil {
-		return fmt.Errorf("look up user %d: %w", actor.ID, err)
+		return fmt.Errorf("look up user %d: %w", actor.User.ID, err)
 	}
 	// An account without a password (OIDC-only, later) has no current
 	// password to give, so it can't set one this way.
@@ -147,35 +194,64 @@ func (s *Service) ChangePassword(ctx context.Context, actor User, keepSessionID 
 	}
 	ok, err := s.hasher.verify(ctx, stored, current)
 	if err != nil {
-		return fmt.Errorf("verify password for user %d: %w", actor.ID, err)
+		return fmt.Errorf("verify password for user %d: %w", actor.User.ID, err)
 	}
 	if !ok || !u.PasswordHash.Valid {
 		return ErrInvalidCredentials
 	}
-	return s.setPassword(ctx, actor.ID, password, keepSessionID)
-}
-
-// setPassword stores a new hash and ends the account's sessions except
-// keepSessionID (0 ends them all), in one transaction, so no session
-// signed in with the old password survives the change.
-func (s *Service) setPassword(ctx context.Context, id int64, password string, keepSessionID int64) error {
 	hash, err := s.hasher.hash(ctx, password)
 	if err != nil {
 		return err
 	}
 	return s.inTx(ctx, func(q *sqlc.Queries) error {
-		n, err := q.SetPasswordHash(ctx, sqlc.SetPasswordHashParams{ID: id, PasswordHash: sql.NullString{String: hash, Valid: true}})
+		// The session must still be live and belong to this user: a reset
+		// or a change elsewhere ends it, and so does deleting the account.
+		row, err := q.GetSession(ctx, sqlc.GetSessionParams{TokenHash: actor.tokenHash, Now: db.Timestamp(s.now())})
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && row.UserID != actor.User.ID) {
+			return ErrNoSession
+		}
 		if err != nil {
-			return fmt.Errorf("set password for user %d: %w", id, err)
+			return fmt.Errorf("recheck session: %w", err)
+		}
+		n, err := q.ReplacePasswordHash(ctx, sqlc.ReplacePasswordHashParams{
+			ID:      actor.User.ID,
+			NewHash: sql.NullString{String: hash, Valid: true},
+			OldHash: u.PasswordHash,
+		})
+		if err != nil {
+			return fmt.Errorf("set password for user %d: %w", actor.User.ID, err)
 		}
 		if n == 0 {
-			return ErrNotFound
+			return ErrInvalidCredentials // changed since it was verified
 		}
-		if err := q.DeleteUserSessions(ctx, sqlc.DeleteUserSessionsParams{UserID: id, KeepID: keepSessionID}); err != nil {
-			return fmt.Errorf("end sessions of user %d: %w", id, err)
-		}
-		return nil
+		return endSessions(ctx, q, actor.User.ID, row.ID)
 	})
+}
+
+// recheckAdmin returns the actor's account as it is now, inside the write
+// transaction q belongs to, or ErrForbidden if their session has ended or
+// they are no longer an admin.
+func (s *Service) recheckAdmin(ctx context.Context, q *sqlc.Queries, actor Session) (User, error) {
+	row, err := q.GetSession(ctx, sqlc.GetSessionParams{TokenHash: actor.tokenHash, Now: db.Timestamp(s.now())})
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrForbidden
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("recheck session: %w", err)
+	}
+	if row.IsAdmin != 1 {
+		return User{}, ErrForbidden
+	}
+	return User{ID: row.UserID, Username: row.Username, IsAdmin: true}, nil
+}
+
+// endSessions ends a user's sessions except keep (0 ends them all), so no
+// session opened with an old password survives a change.
+func endSessions(ctx context.Context, q *sqlc.Queries, userID, keep int64) error {
+	if err := q.DeleteUserSessions(ctx, sqlc.DeleteUserSessionsParams{UserID: userID, KeepID: keep}); err != nil {
+		return fmt.Errorf("end sessions of user %d: %w", userID, err)
+	}
+	return nil
 }
 
 func toAccount(u sqlc.User) (Account, error) {

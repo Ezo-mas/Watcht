@@ -121,9 +121,12 @@ type User struct {
 // Session is a sign-in session. Token is the secret for the cookie; it is
 // set only when the session is created.
 type Session struct {
-	ID        int64
-	User      User
-	Token     string
+	ID    int64
+	User  User
+	Token string
+	// tokenHash identifies the session for re-checks inside a write
+	// transaction. Unlike user and session IDs, it can never be reused.
+	tokenHash []byte
 	ExpiresAt time.Time
 	// Renewed is true when Authenticate moved the expiry forward, so the
 	// caller should refresh the cookie's expiry too.
@@ -219,13 +222,23 @@ func (s *Service) Login(ctx context.Context, username, password string) (Session
 
 	var sess Session
 	err = s.inTx(ctx, func(q *sqlc.Queries) error {
+		// The password may have changed (or the account been deleted, and
+		// its ID reused) while it was being verified; a session must never
+		// outlive the password that opened it.
+		cur, err := q.GetUserByID(ctx, u.ID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && cur.PasswordHash != u.PasswordHash) {
+			return ErrInvalidCredentials
+		}
+		if err != nil {
+			return fmt.Errorf("recheck user %d: %w", u.ID, err)
+		}
 		now := s.now()
 		// Expired sessions are cleaned up here, which is often enough for a
 		// household; a scheduled job can take over once jobs exist (M3).
 		if err := q.DeleteExpiredSessions(ctx, db.Timestamp(now)); err != nil {
 			return fmt.Errorf("delete expired sessions: %w", err)
 		}
-		sess, err = s.createSession(ctx, q, User{ID: u.ID, Username: u.Username, IsAdmin: u.IsAdmin == 1}, now)
+		sess, err = s.createSession(ctx, q, User{ID: cur.ID, Username: cur.Username, IsAdmin: cur.IsAdmin == 1}, now)
 		return err
 	})
 	if err != nil {
@@ -246,7 +259,7 @@ func (s *Service) createSession(ctx context.Context, q *sqlc.Queries, u User, no
 	if err != nil {
 		return Session{}, fmt.Errorf("create session: %w", err)
 	}
-	return Session{ID: id, User: u, Token: token, ExpiresAt: expires.UTC().Truncate(time.Second)}, nil
+	return Session{ID: id, User: u, Token: token, tokenHash: hash, ExpiresAt: expires.UTC().Truncate(time.Second)}, nil
 }
 
 // Authenticate returns the session for a token from a cookie, renewing its
@@ -272,6 +285,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 	}
 	sess := Session{
 		ID:        row.ID,
+		tokenHash: hash,
 		User:      User{ID: row.UserID, Username: row.Username, IsAdmin: row.IsAdmin == 1},
 		ExpiresAt: expires,
 	}

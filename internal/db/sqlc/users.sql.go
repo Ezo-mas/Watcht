@@ -131,6 +131,27 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const replacePasswordHash = `-- name: ReplacePasswordHash :execrows
+UPDATE users SET password_hash = ?1
+WHERE id = ?2 AND password_hash = ?3
+`
+
+type ReplacePasswordHashParams struct {
+	NewHash sql.NullString
+	ID      int64
+	OldHash sql.NullString
+}
+
+// ReplacePasswordHash changes a password only if it is still the one the
+// caller verified, so a concurrent change or reset can't be overwritten.
+func (q *Queries) ReplacePasswordHash(ctx context.Context, arg ReplacePasswordHashParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, replacePasswordHash, arg.NewHash, arg.ID, arg.OldHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setPasswordHash = `-- name: SetPasswordHash :execrows
 UPDATE users SET password_hash = ?1 WHERE id = ?2
 `

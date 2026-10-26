@@ -543,3 +543,42 @@ func TestAccountResponsesAndLogsNeverContainSecrets(t *testing.T) {
 		}
 	}
 }
+
+// Account endpoints that hash a password have the same deadline as login:
+// 503 when every hashing slot stays busy.
+func TestAccountEndpointsBusy(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{loginWait: time.Nanosecond})
+	admin := s.setup("admin", "long enough")
+	for _, req := range []request{
+		{method: "POST", path: "/api/v1/users", body: `{"username":"bob","password":"long enough"}`},
+		{method: "PUT", path: "/api/v1/me/password", body: `{"current_password":"long enough","new_password":"new password"}`},
+	} {
+		req.cookie = admin
+		rec := s.do(req)
+		if rec.Code != http.StatusServiceUnavailable || decodeError(t, rec).Code != "busy" {
+			t.Errorf("%s %s: %d %s, want 503 busy", req.method, req.path, rec.Code, rec.Body)
+		}
+	}
+	if strings.Contains(s.logs.String(), "level=ERROR") {
+		t.Errorf("a busy server logged errors:\n%s", s.logs)
+	}
+}
+
+// A rejected new password doesn't judge a guess, so it doesn't use up an
+// attempt.
+func TestInvalidNewPasswordDoesNotUseAnAttempt(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(1, time.Hour, nil)})
+	admin := s.setup("admin", "long enough")
+	for range 3 {
+		rec := s.do(request{method: "PUT", path: "/api/v1/me/password", cookie: admin,
+			body: `{"current_password":"long enough","new_password":"short"}`})
+		if rec.Code != http.StatusBadRequest || decodeError(t, rec).Code != "invalid_input" {
+			t.Fatalf("short new password: %d %s, want 400 invalid_input", rec.Code, rec.Body)
+		}
+	}
+	rec := s.do(request{method: "PUT", path: "/api/v1/me/password", cookie: admin,
+		body: `{"current_password":"long enough","new_password":"new password"}`})
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("valid change after rejected ones: %d %s, want 204", rec.Code, rec.Body)
+	}
+}

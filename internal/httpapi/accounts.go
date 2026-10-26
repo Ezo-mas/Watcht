@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -64,9 +65,9 @@ func toAccountJSON(a auth.Account) accountJSON {
 }
 
 func (h *authHandlers) listUsers(w http.ResponseWriter, r *http.Request, sess auth.Session) {
-	accounts, err := h.auth.ListAccounts(r.Context(), sess.User)
+	accounts, err := h.auth.ListAccounts(r.Context(), sess)
 	if err != nil {
-		h.accountError(w, "list users", err)
+		h.accountError(w, r, "list users", err)
 		return
 	}
 	users := make([]accountJSON, 0, len(accounts))
@@ -87,9 +88,11 @@ func (h *authHandlers) createUser(w http.ResponseWriter, r *http.Request, sess a
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	a, err := h.auth.CreateAccount(r.Context(), sess.User, req.Username, req.Password, req.IsAdmin)
+	ctx, cancel := context.WithTimeout(r.Context(), h.loginWait)
+	defer cancel()
+	a, err := h.auth.CreateAccount(ctx, sess, req.Username, req.Password, req.IsAdmin)
 	if err != nil {
-		h.accountError(w, "create user", err)
+		h.accountError(w, r, "create user", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, struct {
@@ -102,8 +105,8 @@ func (h *authHandlers) deleteUser(w http.ResponseWriter, r *http.Request, sess a
 	if !ok {
 		return
 	}
-	if err := h.auth.DeleteAccount(r.Context(), sess.User, id); err != nil {
-		h.accountError(w, "delete user", err)
+	if err := h.auth.DeleteAccount(r.Context(), sess, id); err != nil {
+		h.accountError(w, r, "delete user", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -120,8 +123,10 @@ func (h *authHandlers) resetPassword(w http.ResponseWriter, r *http.Request, ses
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if err := h.auth.ResetPassword(r.Context(), sess.User, id, req.Password); err != nil {
-		h.accountError(w, "reset password", err)
+	ctx, cancel := context.WithTimeout(r.Context(), h.loginWait)
+	defer cancel()
+	if err := h.auth.ResetPassword(ctx, sess, id, req.Password); err != nil {
+		h.accountError(w, r, "reset password", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -145,7 +150,9 @@ func (h *authHandlers) changePassword(w http.ResponseWriter, r *http.Request, se
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	err := h.auth.ChangePassword(r.Context(), sess.User, sess.ID, req.CurrentPassword, req.NewPassword)
+	ctx, cancel := context.WithTimeout(r.Context(), h.loginWait)
+	defer cancel()
+	err := h.auth.ChangePassword(ctx, sess, req.CurrentPassword, req.NewPassword)
 	if errors.Is(err, auth.ErrInvalidCredentials) {
 		// 400, not 401: the session is fine, and the SPA treats 401 as
 		// "signed out".
@@ -153,10 +160,13 @@ func (h *authHandlers) changePassword(w http.ResponseWriter, r *http.Request, se
 		return
 	}
 	if err != nil {
+		// No guess was judged (bad new password, busy, session gone), so
+		// the attempt doesn't count. A client that left mid-request isn't
+		// refunded: it may have been checking a guess.
 		if r.Context().Err() == nil {
 			h.limiter.Refund(key)
 		}
-		h.accountError(w, "change password", err)
+		h.accountError(w, r, "change password", err)
 		return
 	}
 	h.limiter.Refund(key)
@@ -164,8 +174,16 @@ func (h *authHandlers) changePassword(w http.ResponseWriter, r *http.Request, se
 }
 
 // accountError maps account-management errors to responses.
-func (h *authHandlers) accountError(w http.ResponseWriter, op string, err error) {
+func (h *authHandlers) accountError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	switch {
+	case r.Context().Err() != nil:
+		// The client went away; there's no one to answer.
+	case errors.Is(err, context.DeadlineExceeded):
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusServiceUnavailable, "busy", "the server is busy; try again in a few seconds")
+	case errors.Is(err, auth.ErrNoSession):
+		h.clearSessionCookie(w, r)
+		writeError(w, http.StatusUnauthorized, "unauthenticated", "your session has ended; sign in again")
 	case errors.Is(err, auth.ErrInvalidUsername), errors.Is(err, auth.ErrInvalidPassword):
 		writeError(w, http.StatusBadRequest, "invalid_input", err.Error())
 	case errors.Is(err, auth.ErrUsernameTaken):

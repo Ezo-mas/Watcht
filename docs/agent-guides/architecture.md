@@ -66,8 +66,13 @@ themselves. `catalog` and `tracking` decide what gets stored.
    reveals nothing). Passwords use argon2id in PHC format, compared in
    constant time; a login for an unknown user verifies a dummy hash so it
    takes as long as a wrong password. Every non-GET request passes the
-   cross-origin check (`http.CrossOriginProtection`). See `SECURITY.md`
-   before changing any of this.
+   cross-origin check (`http.CrossOriginProtection`). Slow work (password
+   hashing) happens before the write transaction, so anything checked
+   before it can be stale: the transaction re-checks it. Account changes
+   re-check the acting admin through their session's token hash (IDs can
+   be reused after a delete), login re-checks that the verified hash is
+   still current, and a password change only replaces the hash it
+   verified. See `SECURITY.md` before changing any of this.
 10. **HTTP API.** Routes under `/api/v1`, JSON only, one error shape.
     Anything not under `/api/`, `/healthz`, or a built asset returns the
     SPA's `index.html`, except missing files under `/_app/`, which 404 so
