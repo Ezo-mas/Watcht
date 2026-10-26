@@ -120,11 +120,13 @@ Use two `*sql.DB` handles: a write pool limited to one connection, and a read po
 
 Accounts:
 
-- `users`: username, display name, password hash (nullable for OIDC-only users), `is_admin`, timestamps
-- `sessions`: hashed session token, user, expiry, last seen, user agent
-- `api_tokens`: hashed token, user, name, scopes, last used (for webhooks and scripts)
+- `users`: username, password hash (nullable for OIDC-only users), `is_admin`, created at. A display name is added when the UI shows one.
+- `sessions`: hashed session token, user, created at, expiry. Last seen and user agent are added if a sessions list is built.
+- `api_tokens`: hashed token, user, name, created at (for webhooks and scripts). Scopes arrive with webhooks in M7.
 - `oidc_identities`: issuer + subject mapped to a user (added with OIDC)
-- `user_settings`: time zone, plus per-user JSON for the dashboard layout (replaces the two legacy layout tables)
+- `user_settings`: time zone, plus per-user JSON for the dashboard layout (replaces the two legacy layout tables). Arrives in M4, with the first features that use it.
+
+M2 keeps the account tables to the columns its features use (maintainer decision, 2026-10-26), in line with the rule above.
 
 Catalog (shared by all users):
 
@@ -176,8 +178,8 @@ A watch from Jellyfin, then the same watch from Plex, then a manual mark should 
 - **First-run setup:** if there are no users, every page redirects to `/setup`, which creates the admin account.
 - **Household users:** the admin creates other accounts. No public sign-up.
 - **Sessions:** a random 32-byte token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` when served over HTTPS). Only its SHA-256 hash is stored. Sliding expiry, 30 days by default.
-- **CSRF:** `SameSite=Lax` plus a check that the `Origin` header matches on every non-GET request.
-- **API tokens:** per-user tokens for webhooks and scripts. Stored hashed, shown once, revocable. Sent in the `Authorization` header wherever the client supports it. A token in the webhook URL is accepted only for media servers that can't send headers, and the docs explain that reverse proxy access logs will contain it.
+- **CSRF:** `SameSite=Lax` plus a cross-origin check on every non-GET request, using the standard library's `http.CrossOriginProtection` (maintainer decision, 2026-10-26): it rejects requests whose `Sec-Fetch-Site` says cross-site, or, from browsers that don't send that header, whose `Origin` doesn't match the `Host`. `WATCHT_BASE_URL`'s origin is trusted too. Requests with neither header come from non-browser clients, which can't be used for CSRF, and are allowed.
+- **API tokens:** per-user tokens for webhooks and scripts. Stored hashed, shown once, revocable. Until scopes exist, a token can use the data API but not account management (users, passwords, tokens), which needs a browser session, so a leaked webhook token can't take over an account (maintainer decision, 2026-10-26). Sent in the `Authorization` header wherever the client supports it. A token in the webhook URL is accepted only for media servers that can't send headers, and the docs explain that reverse proxy access logs will contain it.
 - **No secrets in logs:** the request logger redacts the `Authorization` header, cookies, and any `token` query parameter. Provider API keys are never logged.
 - **Rate limiting:** a simple in-memory limiter on login attempts.
 - **OIDC (later):** optional, configured by env vars. Can auto-create users or require an existing account to link.
@@ -308,11 +310,15 @@ Each milestone ends with something runnable and is merged to `main` before the n
 
 ### M2: Auth
 
-- Tables: `users`, `sessions`, `api_tokens`, `user_settings`.
+- Tables: sign-in columns on `users`, `sessions`, `api_tokens`. (`user_settings` moved to M4.)
 - First-run setup, login, logout, sessions, CSRF check, login rate limit.
 - Admin user management, API tokens.
 - Svelte `/setup`, `/login`, and an authenticated layout.
 - **Done when:** a fresh instance walks through setup and the dashboard is only reachable when signed in.
+- **Status: in progress**, in five slices: (1) schema and the `internal/auth` service (passwords, setup, login, sessions, rate limiter); (2) the HTTP endpoints, session cookie, and CSRF; (3) admin user management, password changes, and API tokens; (4) the SPA's `/setup`, `/login`, and signed-in layout; (5) settings pages for passwords, tokens, and users.
+  - Passwords: argon2id with RFC 9106's memory-constrained parameters (64 MiB, 3 passes, 4 lanes), stored in PHC format so the cost can change later. At most two hashes run at once, bounding memory on small machines. At least 8 characters, at most 256 bytes; no composition rules.
+  - A login for an unknown user is checked against a dummy hash with the same cost, so response time doesn't reveal which usernames exist.
+  - Sessions renew their 30-day expiry at most once a day, so most requests don't write. Expired sessions are deleted at login until the job scheduler exists (M3).
 
 ### M3: Catalog and TMDB
 
@@ -325,7 +331,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 
 ### M4: Tracking parity
 
-- Tables: `watch_events`, `watchlist_items`, `ratings`, and the `catalog_fts` index.
+- Tables: `watch_events`, `watchlist_items`, `ratings`, `user_settings`, and the `catalog_fts` index.
 - Watch events with source and dedupe, episode and season marking, history feed.
 - Watchlist, ratings, show progress.
 - Dashboard with widgets and saved block order, with day-based stats in the user's time zone.

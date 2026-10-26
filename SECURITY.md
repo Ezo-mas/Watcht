@@ -26,7 +26,7 @@ before it is considered done:
   (`internal/auth/`)
 - Session cookies, session storage, or expiry
 - API tokens: creation, hashing, lookup, scopes, or revocation
-- CSRF protection (the `Origin` check) or CORS
+- CSRF protection (`http.CrossOriginProtection`) or CORS
 - Webhook authentication (`/api/v1/webhooks/`)
 - OIDC sign-in and account linking
 - Request logging and redaction

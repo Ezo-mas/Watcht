@@ -4,8 +4,22 @@
 
 package sqlc
 
-type User struct {
+import (
+	"database/sql"
+)
+
+type Session struct {
 	ID        int64
-	Username  string
+	TokenHash []byte
+	UserID    int64
 	CreatedAt string
+	ExpiresAt string
+}
+
+type User struct {
+	ID           int64
+	Username     string
+	CreatedAt    string
+	PasswordHash sql.NullString
+	IsAdmin      int64
 }
