@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Ezo-mas/watcht/internal/auth"
 	"github.com/Ezo-mas/watcht/internal/config"
 	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/httpapi"
@@ -91,11 +92,19 @@ func serve(stderr io.Writer) int {
 		return 1
 	}
 
-	handler := httpapi.NewRouter(httpapi.Deps{
-		Logger: logger,
-		WebUI:  webui.Handler(webui.Dist()),
-		Health: database.Ping,
+	handler, err := httpapi.NewRouter(httpapi.Deps{
+		Logger:         logger,
+		WebUI:          webui.Handler(webui.Dist()),
+		Health:         database.Ping,
+		Auth:           auth.New(database, auth.Options{Logger: logger}),
+		BaseOrigin:     cfg.BaseOrigin(),
+		TrustedProxies: cfg.TrustedProxies,
 	})
+	if err != nil {
+		logger.Error("invalid configuration", "err", err)
+		_ = database.Close()
+		return 1
+	}
 	code := 0
 	if err := server.Run(ctx, cfg.Listen, handler, logger); err != nil {
 		logger.Error("server stopped", "err", err)

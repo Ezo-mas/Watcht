@@ -45,13 +45,15 @@ tracking, auth, jobs, or the API shape.
 1. Add the handler in `internal/httpapi/`, registered under `/api/v1`.
 2. Decode and validate input in the handler; put the logic in a domain
    package.
-3. Return errors through the shared error helper so the shape stays
-   consistent.
-   The `/api/` catch-all matches every API path, so the mux never sends
-   its own 405: a request with the wrong method for a registered route
-   falls through to the catch-all's 404. When adding the first routes,
-   give the API a method-aware fallback that returns 405 with an `Allow`
-   header in the standard error shape, and test a wrong-method request.
+3. Register the route on the API mux with a method and full path
+   (`api.handle("POST /api/v1/auth/login", h.login)`). Unknown paths get a
+   JSON 404 and wrong methods a JSON 405 with `Allow`, automatically.
+   Decode bodies with `decodeJSON` (JSON only, 64 KiB, unknown fields
+   rejected) and return errors with `writeError` so the shape stays
+   consistent. Unexpected errors are logged and sent as a generic 500;
+   never put a raw error in a response.
+   Every non-GET request passes `http.CrossOriginProtection` (wired in
+   `NewRouter`), so state-changing endpoints must not be GETs.
 4. Add an `httptest` test against the real router and a temporary database.
    Server-wide timeouts (`internal/server`) are 30s read and 60s write.
    Long uploads or streaming responses (importers, exports) extend their

@@ -11,6 +11,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Ezo-mas/watcht/internal/auth"
+	"github.com/Ezo-mas/watcht/internal/db/dbtest"
 )
 
 func newTestRouter(t *testing.T) (http.Handler, *bytes.Buffer) {
@@ -24,11 +27,16 @@ func newTestRouterWithHealth(t *testing.T, health func(context.Context) error) (
 	spa := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "spa")
 	})
-	return NewRouter(Deps{
+	h, err := NewRouter(Deps{
 		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
 		WebUI:  spa,
 		Health: health,
-	}), &logs
+		Auth:   auth.New(dbtest.New(t), auth.Options{Argon2: cheapArgon2}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h, &logs
 }
 
 func TestHealthzReportsUnhealthyDependency(t *testing.T) {
