@@ -54,9 +54,12 @@ tracking, auth, jobs, or the API shape.
    never put a raw error in a response.
    Every non-GET request passes `http.CrossOriginProtection` (wired in
    `NewRouter`), so state-changing endpoints must not be GETs.
-   Wrap handlers that need a signed-in user in `withSession` (401
-   without a session cookie) or `withAdmin` (also 403 for non-admins);
-   the domain function takes the acting user and checks again.
+   Data API handlers use `withUser`, which accepts a session cookie or an
+   API token (`Authorization: Bearer wt_...`). Account and token
+   management use `withSession` (browser session only; 401 without one,
+   403 `session_required` for a token) or `withAdmin` (also 403 for
+   non-admins); the domain function takes the acting session and re-checks
+   it inside its write transaction.
 4. Add an `httptest` test against the real router and a temporary database.
    Server-wide timeouts (`internal/server`) are 30s read and 60s write.
    Long uploads or streaming responses (importers, exports) extend their
