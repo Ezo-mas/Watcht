@@ -204,14 +204,11 @@ func (s *Service) ChangePassword(ctx context.Context, actor Session, current, pa
 		return err
 	}
 	return s.inTx(ctx, func(q *sqlc.Queries) error {
-		// The session must still be live and belong to this user: a reset
-		// or a change elsewhere ends it, and so does deleting the account.
-		row, err := q.GetSession(ctx, sqlc.GetSessionParams{TokenHash: actor.tokenHash, Now: db.Timestamp(s.now())})
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && row.UserID != actor.User.ID) {
-			return ErrNoSession
-		}
+		// The session must still be live: a reset or a change elsewhere
+		// ends it, and so does deleting the account.
+		row, err := s.recheckSession(ctx, q, actor)
 		if err != nil {
-			return fmt.Errorf("recheck session: %w", err)
+			return err
 		}
 		n, err := q.ReplacePasswordHash(ctx, sqlc.ReplacePasswordHashParams{
 			ID:      actor.User.ID,
@@ -243,6 +240,20 @@ func (s *Service) recheckAdmin(ctx context.Context, q *sqlc.Queries, actor Sessi
 		return User{}, ErrForbidden
 	}
 	return User{ID: row.UserID, Username: row.Username, IsAdmin: true}, nil
+}
+
+// recheckSession returns the actor's session as it is now, inside the
+// write transaction q belongs to, or ErrNoSession if it has ended or no
+// longer belongs to the actor's account.
+func (s *Service) recheckSession(ctx context.Context, q *sqlc.Queries, actor Session) (sqlc.GetSessionRow, error) {
+	row, err := q.GetSession(ctx, sqlc.GetSessionParams{TokenHash: actor.tokenHash, Now: db.Timestamp(s.now())})
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.UserID != actor.User.ID) {
+		return sqlc.GetSessionRow{}, ErrNoSession
+	}
+	if err != nil {
+		return sqlc.GetSessionRow{}, fmt.Errorf("recheck session: %w", err)
+	}
+	return row, nil
 }
 
 // endSessions ends a user's sessions except keep (0 ends them all), so no
