@@ -55,14 +55,16 @@ func NewRouter(d Deps) (http.Handler, error) {
 		limiter = auth.NewLimiter(loginBurst, loginEvery, nil)
 	}
 	api := newAPIMux()
-	(&authHandlers{
+	authAPI := &authHandlers{
 		auth:          d.Auth,
 		limiter:       limiter,
 		proxies:       proxies(d.TrustedProxies),
 		secureCookies: strings.HasPrefix(d.BaseOrigin, "https://"),
 		loginWait:     cmp.Or(d.loginWait, loginWait),
 		logger:        d.Logger,
-	}).register(api)
+	}
+	authAPI.register(api)
+	authAPI.registerAccounts(api)
 
 	mux := http.NewServeMux()
 
