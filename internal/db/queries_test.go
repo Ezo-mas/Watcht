@@ -474,3 +474,25 @@ func TestIsUniqueViolation(t *testing.T) {
 		t.Error("IsUniqueViolation is true for a non-constraint error")
 	}
 }
+
+// users.id is AUTOINCREMENT: deleting the newest account doesn't free its
+// ID for the next one.
+func TestUserIDsAreNotReused(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	w := sqlc.New(d.Write)
+	first, err := w.CreateUser(ctx, sqlc.CreateUserParams{Username: "first", CreatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.DeleteUser(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := w.CreateUser(ctx, sqlc.CreateUserParams{Username: "second", CreatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID <= first.ID {
+		t.Errorf("second account got ID %d after deleting ID %d; IDs must not be reused", second.ID, first.ID)
+	}
+}

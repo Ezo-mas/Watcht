@@ -113,6 +113,7 @@ Use two `*sql.DB` handles: a write pool limited to one connection, and a read po
 - Enums are `TEXT` with a `CHECK` constraint.
 - Tables are `STRICT` so SQLite enforces column types.
 - Integer primary keys everywhere; user-facing IDs are the same integers (this is a single-household app, so there's no need to hide them).
+- `users.id` is `AUTOINCREMENT` (maintainer decision, 2026-10-26), so a deleted account's ID is never given to a new one: anything still holding the old ID (a job payload, an open admin page) can't end up acting on someone else. Other tables use plain integer keys.
 
 ### Tables
 

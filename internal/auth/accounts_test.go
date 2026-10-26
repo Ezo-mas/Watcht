@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
+
+	"github.com/Ezo-mas/watcht/internal/db"
 )
 
 // setupWithMember returns a service with an admin (signed in) and a
@@ -270,11 +273,17 @@ func TestAdminsCantDeleteEachOther(t *testing.T) {
 	}
 }
 
-// A request from a deleted admin fails even if a new admin account got
-// the same ID (SQLite reuses the highest freed ID).
+// A request from a deleted admin fails even if a new admin account has
+// the same ID. users.id is AUTOINCREMENT, so SQLite never reuses one by
+// itself; the test forces it (as a restored backup or hand edit could) to
+// check that sessions are re-checked by token hash, not ID.
 func TestDeletedAdminCantActThroughAReusedID(t *testing.T) {
-	s, a, _ := setupWithMember(t)
+	s, d, _ := newService(t)
 	ctx := context.Background()
+	a, err := s.Setup(ctx, "admin", "admin password")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.CreateAccount(ctx, a, "admin-b", "long enough", true); err != nil {
 		t.Fatal(err)
 	}
@@ -285,12 +294,9 @@ func TestDeletedAdminCantActThroughAReusedID(t *testing.T) {
 	if err := s.DeleteAccount(ctx, a, b.User.ID); err != nil {
 		t.Fatal(err)
 	}
-	newcomer, err := s.CreateAccount(ctx, a, "newcomer", "long enough", true)
-	if err != nil {
+	if _, err := d.Write.ExecContext(ctx, "INSERT INTO users (id, username, is_admin, created_at) VALUES (?, 'newcomer', 1, ?)",
+		b.User.ID, db.Timestamp(time.Now())); err != nil {
 		t.Fatal(err)
-	}
-	if newcomer.ID != b.User.ID {
-		t.Fatalf("newcomer got ID %d, not the freed %d; the test needs SQLite to reuse it", newcomer.ID, b.User.ID)
 	}
 	if _, err := s.CreateAccount(ctx, b, "sneaky", "long enough", true); !errors.Is(err, ErrNoSession) {
 		t.Errorf("CreateAccount by the deleted admin: %v, want ErrNoSession", err)
@@ -337,17 +343,32 @@ func TestLoginRacingAReset(t *testing.T) {
 	}
 }
 
-// Same for an account deleted mid-login whose ID went to a new account.
+// Same for an account deleted mid-login whose ID went to a new account
+// (forced, as above).
 func TestLoginRacingDeleteAndIDReuse(t *testing.T) {
-	s, admin, member := setupWithMember(t)
+	s, d, _ := newService(t)
 	ctx := context.Background()
+	admin, err := s.Setup(ctx, "admin", "admin password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := s.CreateAccount(ctx, admin, "member", "member password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The newcomer even has the same password, so only the hash's salt
+	// tells the rows apart.
+	hash, err := newHasher(cheap, 1).hash(ctx, "member password")
+	if err != nil {
+		t.Fatal(err)
+	}
 	onFirstVerify(s, func() {
 		if err := s.DeleteAccount(ctx, admin, member.ID); err != nil {
 			t.Errorf("delete: %v", err)
 		}
-		n, err := s.CreateAccount(ctx, admin, "newcomer", "newcomer password", false)
-		if err != nil || n.ID != member.ID {
-			t.Errorf("newcomer = %+v, %v; want the reused ID %d", n, err, member.ID)
+		if _, err := d.Write.ExecContext(ctx, "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, 'newcomer', ?, ?)",
+			member.ID, hash, db.Timestamp(time.Now())); err != nil {
+			t.Error(err)
 		}
 	})
 	sess, err := s.Login(ctx, "member", "member password")
