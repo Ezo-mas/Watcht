@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Ezo-mas/watcht/internal/auth"
 )
 
 // tokenPath is the path of one API token, e.g. /api/v1/tokens/7.
@@ -24,12 +26,12 @@ func bearerHeader(secret string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + secret}
 }
 
-// issueToken creates a token named name as the user behind cookie, and
-// returns its metadata and secret. It fails the test unless the token is
-// created.
-func (s *authServer) issueToken(cookie *http.Cookie, name string) (tokenJSON, string) {
+// issueToken creates a token named name as the user behind cookie, who gives
+// their current password, and returns its metadata and secret. It fails the
+// test unless the token is created.
+func (s *authServer) issueToken(cookie *http.Cookie, password, name string) (tokenJSON, string) {
 	s.t.Helper()
-	rec := s.createTokenAs(cookie, name)
+	rec := s.createTokenAs(cookie, password, name)
 	if rec.Code != http.StatusCreated {
 		s.t.Fatalf("create token %q: %d %s", name, rec.Code, rec.Body)
 	}
@@ -43,11 +45,12 @@ func (s *authServer) issueToken(cookie *http.Cookie, name string) (tokenJSON, st
 	return created.Token, created.Secret
 }
 
-// createTokenAs sends POST /api/v1/tokens as the user behind cookie.
-func (s *authServer) createTokenAs(cookie *http.Cookie, name string) *httptest.ResponseRecorder {
+// createTokenAs sends POST /api/v1/tokens as the user behind cookie, with
+// their current password.
+func (s *authServer) createTokenAs(cookie *http.Cookie, password, name string) *httptest.ResponseRecorder {
 	return s.do(request{
 		method: http.MethodPost, path: "/api/v1/tokens", cookie: cookie,
-		body: jsonBody(s.t, map[string]string{"name": name}),
+		body: jsonBody(s.t, map[string]string{"name": name, "password": password}),
 	})
 }
 
@@ -164,7 +167,7 @@ func TestMeWithAPIToken(t *testing.T) {
 	admin := s.setup("admin", "admin password")
 	s.createAccount(admin, "member", "member password", false)
 	memberCookie := s.login("member", "member password")
-	_, secret := s.issueToken(memberCookie, "laptop")
+	_, secret := s.issueToken(memberCookie, "member password", "laptop")
 	want := s.userOf(memberCookie)
 
 	for _, tt := range []struct{ name, header string }{
@@ -199,40 +202,21 @@ func TestMeWithoutCredentials(t *testing.T) {
 	}
 }
 
-// A malformed Authorization header is 401 with a Bearer challenge, even
-// when the request also carries a valid session cookie.
-func TestMeMalformedAuthorizationHeader(t *testing.T) {
-	s := newAuthServer(t, authServerOptions{})
-	admin := s.setup("admin", "admin password")
-	for _, header := range []string{"Basic x", "Bearer", "Bearer   ", "Bearer\twt_x"} {
-		for name, cookie := range map[string]*http.Cookie{"no cookie": nil, "valid cookie": admin} {
-			t.Run(header+" with "+name, func(t *testing.T) {
-				rec := s.meRequest(request{cookie: cookie, header: map[string]string{"Authorization": header}})
-				expectError(t, rec, http.StatusUnauthorized, "unauthenticated")
-				if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
-					t.Errorf("WWW-Authenticate = %q, want Bearer", got)
-				}
-			})
-		}
-	}
-}
-
 // Unknown, revoked, and malformed tokens are all the same 401.
 func TestMeRejectsUnknownAndRevokedTokens(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
-	tok, revoked := s.issueToken(admin, "old")
+	tok, revoked := s.issueToken(admin, "admin password", "old")
 	expectMe(t, s.meRequest(request{header: bearerHeader(revoked)}), s.userOf(admin))
 	if rec := s.revokeTokenAs(admin, tok.ID); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke: %d %s", rec.Code, rec.Body)
 	}
 
 	for name, header := range map[string]string{
-		"revoked":            "Bearer " + revoked,
-		"unknown":            "Bearer wt_" + strings.Repeat("A", 43),
-		"secret without wt_": "Bearer " + strings.TrimPrefix(revoked, "wt_"),
-		"doubled prefix":     "Bearer wt_" + revoked,
-		"wrong length":       "Bearer wt_short",
+		"revoked":        "Bearer " + revoked,
+		"unknown":        "Bearer wt_" + strings.Repeat("A", 43),
+		"doubled prefix": "Bearer wt_" + revoked,
+		"wrong length":   "Bearer wt_short",
 	} {
 		t.Run(name, func(t *testing.T) {
 			expectInvalidToken(t, s.meRequest(request{header: map[string]string{"Authorization": header}}))
@@ -240,30 +224,40 @@ func TestMeRejectsUnknownAndRevokedTokens(t *testing.T) {
 	}
 }
 
-// The cookie is never a fallback when an Authorization header is present:
-// a bad token is refused even with a valid session, and a valid token wins
-// over any cookie.
+// The cookie is never a fallback for a watcht token: a bad token is refused
+// even with a valid session, and a valid token wins over any cookie. Other
+// Authorization headers aren't tokens at all; see
+// TestOnlyWatchtTokensSwitchToTokenAuth.
 func TestBadTokenNeverFallsBackToCookie(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
 	s.createAccount(admin, "member", "member password", false)
 	memberCookie := s.login("member", "member password")
-	tok, revoked := s.issueToken(memberCookie, "old")
+	tok, revoked := s.issueToken(memberCookie, "member password", "old")
 	if rec := s.revokeTokenAs(memberCookie, tok.ID); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke: %d %s", rec.Code, rec.Body)
 	}
-	_, memberSecret := s.issueToken(memberCookie, "phone")
-	_, adminSecret := s.issueToken(admin, "ci")
+	_, memberSecret := s.issueToken(memberCookie, "member password", "phone")
+	_, adminSecret := s.issueToken(admin, "admin password", "ci")
 	stale := &http.Cookie{Name: sessionCookie, Value: "stale"}
 
 	for name, header := range map[string]string{
 		"unknown token": "Bearer wt_" + strings.Repeat("A", 43),
 		"revoked token": "Bearer " + revoked,
-		"malformed":     "Basic x",
 	} {
+		h := map[string]string{"Authorization": header}
 		t.Run(name+" with a valid session", func(t *testing.T) {
-			rec := s.meRequest(request{cookie: admin, header: map[string]string{"Authorization": header}})
-			expectError(t, rec, http.StatusUnauthorized, "unauthenticated")
+			expectError(t, s.meRequest(request{cookie: admin, header: h}), http.StatusUnauthorized, "unauthenticated")
+			// Session endpoints refuse a token outright, bad or not, before
+			// the cookie is looked at.
+			for _, req := range []request{
+				{method: http.MethodGet, path: "/api/v1/tokens"},
+				{method: http.MethodGet, path: "/api/v1/users"},
+				{method: http.MethodPut, path: "/api/v1/me/password", body: jsonBody(t, map[string]string{"current_password": "admin password", "new_password": "new admin password"})},
+			} {
+				req.cookie, req.header = admin, h
+				expectError(t, s.do(req), http.StatusForbidden, "session_required")
+			}
 		})
 	}
 	if !s.signedIn(admin) {
@@ -275,14 +269,15 @@ func TestBadTokenNeverFallsBackToCookie(t *testing.T) {
 }
 
 // Token endpoints need a browser session. A token, valid or not, gets 403
-// session_required, and no request creates or revokes anything.
+// session_required, even with the right password, and no request creates or
+// revokes anything.
 func TestTokenEndpointsNeedASession(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
-	ci, ciSecret := s.issueToken(admin, "ci")
-	backup, _ := s.issueToken(admin, "backup")
+	ci, ciSecret := s.issueToken(admin, "admin password", "ci")
+	backup, _ := s.issueToken(admin, "admin password", "backup")
 	stale := &http.Cookie{Name: sessionCookie, Value: "stale"}
-	create := jsonBody(t, map[string]string{"name": "intruder"})
+	create := jsonBody(t, map[string]string{"name": "intruder", "password": "admin password"})
 	unknown := "wt_" + strings.Repeat("A", 43)
 
 	for _, tt := range []struct {
@@ -318,7 +313,7 @@ func TestCreateToken(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
 
-	rec := s.createTokenAs(admin, "  jellyfin  ")
+	rec := s.createTokenAs(admin, "admin password", "  jellyfin  ")
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
 	}
@@ -374,6 +369,100 @@ func TestCreateToken(t *testing.T) {
 	}
 }
 
+// Creating a token needs the current password. A wrong, empty, or missing
+// one is invalid_credentials, and no token is created.
+func TestCreateTokenNeedsTheCurrentPassword(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	admin := s.setup("admin", "admin password")
+
+	for _, body := range []string{
+		jsonBody(t, map[string]string{"name": "laptop", "password": "not the password"}),
+		jsonBody(t, map[string]string{"name": "laptop", "password": ""}),
+		jsonBody(t, map[string]string{"name": "laptop"}),
+	} {
+		rec := s.do(request{method: http.MethodPost, path: "/api/v1/tokens", cookie: admin, body: body})
+		expectError(t, rec, http.StatusBadRequest, "invalid_credentials")
+	}
+	if got := s.tokensOf(admin); len(got) != 0 {
+		t.Errorf("tokens = %v, want none after the refused creations", tokenNames(got))
+	}
+	s.issueToken(admin, "admin password", "laptop")
+	if got := tokenNames(s.tokensOf(admin)); !slices.Equal(got, []string{"laptop"}) {
+		t.Errorf("tokens = %v, want [laptop]", got)
+	}
+}
+
+// A wrong current password uses up the account's attempts, as it does for a
+// password change. Over the limit, even the right password gets 429.
+func TestCreateTokenRateLimitPerAccount(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(2, time.Hour, nil)})
+	admin := s.setup("admin", "admin password")
+
+	expectError(t, s.createTokenAs(admin, "wrong guess", "laptop"), http.StatusBadRequest, "invalid_credentials")
+	expectError(t, s.createTokenAs(admin, "wrong guess", "laptop"), http.StatusBadRequest, "invalid_credentials")
+	rec := s.createTokenAs(admin, "admin password", "laptop")
+	expectError(t, rec, http.StatusTooManyRequests, "rate_limited")
+	if ra := rec.Header().Get("Retry-After"); ra == "" || ra == "0" {
+		t.Errorf("Retry-After = %q, want a positive number of seconds", ra)
+	}
+	if got := s.tokensOf(admin); len(got) != 0 {
+		t.Errorf("tokens = %v, want none", tokenNames(got))
+	}
+}
+
+// Creating a token and changing the password share one limit per account:
+// a wrong guess at each uses up a burst of two.
+func TestTokenAndPasswordChangeShareTheLimit(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(2, time.Hour, nil)})
+	admin := s.setup("admin", "admin password")
+
+	expectError(t, s.createTokenAs(admin, "wrong guess", "laptop"), http.StatusBadRequest, "invalid_credentials")
+	expectError(t, s.changeOwnPassword(admin, "wrong guess", "new admin password"), http.StatusBadRequest, "invalid_credentials")
+	expectError(t, s.createTokenAs(admin, "admin password", "laptop"), http.StatusTooManyRequests, "rate_limited")
+	expectError(t, s.changeOwnPassword(admin, "admin password", "new admin password"), http.StatusTooManyRequests, "rate_limited")
+	// The refused change left the password alone.
+	s.login("admin", "admin password")
+	if got := s.tokensOf(admin); len(got) != 0 {
+		t.Errorf("tokens = %v, want none", tokenNames(got))
+	}
+}
+
+// A successful creation gives its attempt back, so with one attempt allowed
+// two creations in a row both work.
+func TestSuccessfulTokenCreationDoesNotUseAnAttempt(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(1, time.Hour, nil)})
+	admin := s.setup("admin", "admin password")
+
+	s.issueToken(admin, "admin password", "laptop")
+	s.issueToken(admin, "admin password", "phone")
+	// One wrong guess uses that single attempt, so the next try waits.
+	expectError(t, s.createTokenAs(admin, "wrong guess", "tablet"), http.StatusBadRequest, "invalid_credentials")
+	expectError(t, s.createTokenAs(admin, "admin password", "tablet"), http.StatusTooManyRequests, "rate_limited")
+	if got := tokenNames(s.tokensOf(admin)); !slices.Equal(got, []string{"laptop", "phone"}) {
+		t.Errorf("tokens = %v, want [laptop phone]", got)
+	}
+}
+
+// A name that's invalid, or already taken, doesn't use up an attempt. The
+// right password is no wrong guess either, so with one attempt allowed these
+// can be retried as often as needed.
+func TestInvalidOrTakenNameDoesNotUseAnAttempt(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(1, time.Hour, nil)})
+	admin := s.setup("admin", "admin password")
+	s.issueToken(admin, "admin password", "laptop")
+
+	for range 3 {
+		expectError(t, s.createTokenAs(admin, "admin password", "   "), http.StatusBadRequest, "invalid_input")
+	}
+	for range 3 {
+		expectError(t, s.createTokenAs(admin, "admin password", "laptop"), http.StatusConflict, "name_taken")
+	}
+	s.issueToken(admin, "admin password", "phone")
+	if got := tokenNames(s.tokensOf(admin)); !slices.Equal(got, []string{"laptop", "phone"}) {
+		t.Errorf("tokens = %v, want [laptop phone]", got)
+	}
+}
+
 // Names are checked after trimming: blank, control characters, and more
 // than 64 characters are invalid_input, and 64 characters is fine.
 func TestTokenNames(t *testing.T) {
@@ -384,14 +473,14 @@ func TestTokenNames(t *testing.T) {
 		name string
 		body string
 	}{
-		{"empty", jsonBody(t, map[string]string{"name": ""})},
-		{"missing", `{}`},
-		{"only spaces", jsonBody(t, map[string]string{"name": "   "})},
-		{"only a tab", jsonBody(t, map[string]string{"name": "\t"})},
-		{"NUL character", jsonBody(t, map[string]string{"name": "a\x00b"})},
-		{"newline", jsonBody(t, map[string]string{"name": "two\nlines"})},
-		{"65 characters", jsonBody(t, map[string]string{"name": strings.Repeat("n", 65)})},
-		{"65 accented characters", jsonBody(t, map[string]string{"name": strings.Repeat("é", 65)})},
+		{"empty", jsonBody(t, map[string]string{"name": "", "password": "admin password"})},
+		{"missing", `{"password":"admin password"}`},
+		{"only spaces", jsonBody(t, map[string]string{"name": "   ", "password": "admin password"})},
+		{"only a tab", jsonBody(t, map[string]string{"name": "\t", "password": "admin password"})},
+		{"NUL character", jsonBody(t, map[string]string{"name": "a\x00b", "password": "admin password"})},
+		{"newline", jsonBody(t, map[string]string{"name": "two\nlines", "password": "admin password"})},
+		{"65 characters", jsonBody(t, map[string]string{"name": strings.Repeat("n", 65), "password": "admin password"})},
+		{"65 accented characters", jsonBody(t, map[string]string{"name": strings.Repeat("é", 65), "password": "admin password"})},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := s.do(request{method: http.MethodPost, path: "/api/v1/tokens", cookie: admin, body: tt.body})
@@ -402,7 +491,7 @@ func TestTokenNames(t *testing.T) {
 	accepted := []string{strings.Repeat("n", 64), strings.Repeat("é", 64)}
 	for i, name := range accepted {
 		t.Run("64 characters "+strconv.Itoa(i+1), func(t *testing.T) {
-			tok, _ := s.issueToken(admin, name)
+			tok, _ := s.issueToken(admin, "admin password", name)
 			if tok.Name != name {
 				t.Errorf("name = %q, want it kept as sent", tok.Name)
 			}
@@ -421,15 +510,15 @@ func TestTokenNamesAreUniquePerUser(t *testing.T) {
 	s.createAccount(admin, "member", "member password", false)
 	memberCookie := s.login("member", "member password")
 
-	tok, _ := s.issueToken(admin, "jellyfin")
+	tok, _ := s.issueToken(admin, "admin password", "jellyfin")
 	for _, name := range []string{"  jellyfin  ", "jellyfin"} {
-		expectError(t, s.createTokenAs(admin, name), http.StatusConflict, "name_taken")
+		expectError(t, s.createTokenAs(admin, "admin password", name), http.StatusConflict, "name_taken")
 	}
 	if got := tokenNames(s.tokensOf(admin)); !slices.Equal(got, []string{"jellyfin"}) {
 		t.Errorf("admin tokens = %v, want [jellyfin]", got)
 	}
 
-	memberTok, _ := s.issueToken(memberCookie, "jellyfin")
+	memberTok, _ := s.issueToken(memberCookie, "member password", "jellyfin")
 	if got := s.tokensOf(memberCookie); len(got) != 1 || got[0] != memberTok {
 		t.Errorf("member tokens = %+v, want [%+v]", got, memberTok)
 	}
@@ -437,7 +526,7 @@ func TestTokenNamesAreUniquePerUser(t *testing.T) {
 	if rec := s.revokeTokenAs(admin, tok.ID); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke: %d %s", rec.Code, rec.Body)
 	}
-	again, _ := s.issueToken(admin, "jellyfin")
+	again, _ := s.issueToken(admin, "admin password", "jellyfin")
 	if got := s.tokensOf(admin); len(got) != 1 || got[0] != again {
 		t.Errorf("admin tokens = %+v, want [%+v]", got, again)
 	}
@@ -448,8 +537,8 @@ func TestTokenNamesAreUniquePerUser(t *testing.T) {
 func TestRevokeToken(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
-	tok, secret := s.issueToken(admin, "laptop")
-	other, otherSecret := s.issueToken(admin, "phone")
+	tok, secret := s.issueToken(admin, "admin password", "laptop")
+	other, otherSecret := s.issueToken(admin, "admin password", "phone")
 
 	rec := s.revokeTokenAs(admin, tok.ID)
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
@@ -476,8 +565,8 @@ func TestTokensArePerUser(t *testing.T) {
 	admin := s.setup("admin", "admin password")
 	s.createAccount(admin, "member", "member password", false)
 	memberCookie := s.login("member", "member password")
-	adminTok, adminSecret := s.issueToken(admin, "admin-ci")
-	memberTok, memberSecret := s.issueToken(memberCookie, "member-ci")
+	adminTok, adminSecret := s.issueToken(admin, "admin password", "admin-ci")
+	memberTok, memberSecret := s.issueToken(memberCookie, "member password", "member-ci")
 	adminUser, memberUser := s.userOf(admin), s.userOf(memberCookie)
 
 	expectMe(t, s.meRequest(request{header: bearerHeader(memberSecret)}), memberUser)
@@ -508,8 +597,8 @@ func TestDeletingAUserRevokesTheirTokens(t *testing.T) {
 	admin := s.setup("admin", "admin password")
 	member := s.createAccount(admin, "member", "member password", false)
 	memberCookie := s.login("member", "member password")
-	_, memberSecret := s.issueToken(memberCookie, "ci")
-	_, adminSecret := s.issueToken(admin, "ci")
+	_, memberSecret := s.issueToken(memberCookie, "member password", "ci")
+	_, adminSecret := s.issueToken(admin, "admin password", "ci")
 	expectMe(t, s.meRequest(request{header: bearerHeader(memberSecret)}), s.userOf(memberCookie))
 
 	if rec := s.deleteUserAs(admin, member.ID); rec.Code != http.StatusNoContent {
@@ -533,8 +622,8 @@ func TestDeletingAUserRevokesTheirTokens(t *testing.T) {
 func TestCrossSiteTokenRequestsAreBlocked(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
-	tok, secret := s.issueToken(admin, "ci")
-	create := jsonBody(t, map[string]string{"name": "evil"})
+	tok, secret := s.issueToken(admin, "admin password", "ci")
+	create := jsonBody(t, map[string]string{"name": "evil", "password": "admin password"})
 
 	for _, req := range []request{
 		{method: http.MethodPost, path: "/api/v1/tokens", body: create},
@@ -566,11 +655,11 @@ func TestCrossSiteTokenRequestsAreBlocked(t *testing.T) {
 func TestScriptRequestsWithATokenAreNotCrossSite(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
-	tok, secret := s.issueToken(admin, "script")
+	tok, secret := s.issueToken(admin, "admin password", "script")
 	script := map[string]string{"Sec-Fetch-Site": "", "Authorization": "Bearer " + secret}
 
 	expectMe(t, s.meRequest(request{header: script}), s.userOf(admin))
-	expectError(t, s.do(request{method: http.MethodPost, path: "/api/v1/tokens", header: script, body: jsonBody(t, map[string]string{"name": "more"})}), http.StatusForbidden, "session_required")
+	expectError(t, s.do(request{method: http.MethodPost, path: "/api/v1/tokens", header: script, body: jsonBody(t, map[string]string{"name": "more", "password": "admin password"})}), http.StatusForbidden, "session_required")
 	expectError(t, s.do(request{method: http.MethodDelete, path: tokenPath(tok.ID), header: script}), http.StatusForbidden, "session_required")
 
 	if got := tokenNames(s.tokensOf(admin)); !slices.Equal(got, []string{"script"}) {
@@ -584,14 +673,14 @@ func TestScriptRequestsWithATokenAreNotCrossSite(t *testing.T) {
 func TestTokenSecretIsNeverLogged(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
-	tok, secret := s.issueToken(admin, "ci")
+	tok, secret := s.issueToken(admin, "admin password", "ci")
 
 	for _, req := range []request{
 		{method: http.MethodGet, path: "/api/v1/me", header: bearerHeader(secret)},
 		{method: http.MethodGet, path: "/api/v1/me", header: map[string]string{"Authorization": "Bearer " + secret + "x"}},
 		{method: http.MethodGet, path: "/api/v1/me", header: map[string]string{"Authorization": "Basic " + secret}},
 		{method: http.MethodGet, path: "/api/v1/tokens", header: bearerHeader(secret)},
-		{method: http.MethodPost, path: "/api/v1/tokens", header: bearerHeader(secret), body: jsonBody(t, map[string]string{"name": "more"})},
+		{method: http.MethodPost, path: "/api/v1/tokens", header: bearerHeader(secret), body: jsonBody(t, map[string]string{"name": "more", "password": "admin password"})},
 		{method: http.MethodGet, path: "/api/v1/tokens", cookie: admin},
 		{method: http.MethodDelete, path: tokenPath(tok.ID), cookie: admin},
 		{method: http.MethodGet, path: "/api/v1/me", header: bearerHeader(secret)},
@@ -611,20 +700,94 @@ func TestTokenSecretIsNeverLogged(t *testing.T) {
 	}
 }
 
-// An Authorization header decides how a request authenticates, even an
-// empty one, and the same way on every endpoint: never falling back to the
-// cookie.
-func TestAuthorizationHeaderAlwaysDecides(t *testing.T) {
+// The password is never in a response or the log, whether the creation
+// succeeds, fails, or is refused. The passwords are distinctive, so a leak
+// can't pass unnoticed.
+func TestTokenPasswordIsNeverEchoedOrLogged(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
-	admin := s.setup("admin", "long enough")
-	for name, value := range map[string]string{"empty": "", "bogus": "Bearer wt_nope"} {
-		h := map[string]string{"Authorization": value}
-		rec := s.do(request{method: http.MethodGet, path: "/api/v1/me", cookie: admin, header: h})
-		expectError(t, rec, http.StatusUnauthorized, "unauthenticated")
-		rec = s.do(request{method: http.MethodGet, path: "/api/v1/tokens", cookie: admin, header: h})
-		if rec.Code != http.StatusForbidden || decodeError(t, rec).Code != "session_required" {
-			t.Errorf("%s Authorization with a valid cookie on /tokens: %d %s, want 403 session_required", name, rec.Code, rec.Body)
+	admin := s.setup("admin", "Sekrit-admin-1")
+
+	var bodies []string
+	for _, body := range []string{
+		jsonBody(t, map[string]string{"name": "laptop", "password": "Sekrit-guess-2"}),
+		jsonBody(t, map[string]string{"name": "laptop"}),
+		jsonBody(t, map[string]string{"name": "laptop", "password": "Sekrit-admin-1"}),
+		jsonBody(t, map[string]string{"name": "laptop", "password": "Sekrit-admin-1"}),
+		jsonBody(t, map[string]string{"name": "  ", "password": "Sekrit-admin-1"}),
+	} {
+		rec := s.do(request{method: http.MethodPost, path: "/api/v1/tokens", cookie: admin, body: body})
+		bodies = append(bodies, rec.Body.String())
+	}
+
+	logs := s.logs.String()
+	if !strings.Contains(logs, "path=/api/v1/tokens") {
+		t.Fatal("the log has no request lines to check")
+	}
+	// The log isn't printed on failure: it would contain the password.
+	for _, secret := range []string{"Sekrit-admin-1", "Sekrit-guess-2"} {
+		for _, body := range bodies {
+			if strings.Contains(body, secret) {
+				t.Errorf("a response body contains %q: %s", secret, body)
+			}
 		}
+		if strings.Contains(logs, secret) {
+			t.Errorf("the log contains %q", secret)
+		}
+	}
+}
+
+// Only a watcht token (Authorization: Bearer wt_...) makes a request a token
+// request. Any other Authorization header is ignored, as if it weren't there,
+// so the session cookie decides: a reverse proxy's Basic auth or an
+// oauth2-proxy JWT comes with every browser request. The secret is a real
+// token, so a header that accepted it would sign in without a cookie.
+func TestOnlyWatchtTokensSwitchToTokenAuth(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	admin := s.setup("admin", "admin password")
+	_, secret := s.issueToken(admin, "admin password", "ci")
+	want := s.userOf(admin)
+
+	for name, value := range map[string]string{
+		"empty":                   "",
+		"Basic":                   "Basic dXNlcjpwYXNz",
+		"Basic x":                 "Basic x",
+		"Basic with the secret":   "Basic " + secret,
+		"Token scheme":            "Token " + secret,
+		"Bearer without a token":  "Bearer",
+		"Bearer with only spaces": "Bearer   ",
+		"tab instead of a space":  "Bearer\t" + secret,
+		"Bearer JWT":              "Bearer eyJhbGciOiJIUzI1NiJ9.e30.c2ln",
+		"secret without its wt_":  "Bearer " + strings.TrimPrefix(secret, "wt_"),
+	} {
+		h := map[string]string{"Authorization": value}
+		t.Run(name+" without a cookie", func(t *testing.T) {
+			rec := s.meRequest(request{header: h})
+			expectError(t, rec, http.StatusUnauthorized, "unauthenticated")
+			if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
+				t.Errorf("WWW-Authenticate = %q, want Bearer", got)
+			}
+			for _, path := range []string{"/api/v1/tokens", "/api/v1/users"} {
+				expectError(t, s.do(request{method: http.MethodGet, path: path, header: h}), http.StatusUnauthorized, "unauthenticated")
+			}
+		})
+		t.Run(name+" with a valid cookie", func(t *testing.T) {
+			expectMe(t, s.meRequest(request{cookie: admin, header: h}), want)
+			for _, path := range []string{"/api/v1/tokens", "/api/v1/users"} {
+				if rec := s.do(request{method: http.MethodGet, path: path, cookie: admin, header: h}); rec.Code != http.StatusOK {
+					t.Errorf("GET %s: %d %s, want 200", path, rec.Code, rec.Body)
+				}
+			}
+		})
+	}
+
+	// Creating a token works the same way behind a Basic-auth proxy.
+	created := s.do(request{
+		method: http.MethodPost, path: "/api/v1/tokens", cookie: admin,
+		header: map[string]string{"Authorization": "Basic dXNlcjpwYXNz"},
+		body:   jsonBody(t, map[string]string{"name": "proxied", "password": "admin password"}),
+	})
+	if created.Code != http.StatusCreated {
+		t.Errorf("POST /tokens with a session and Basic auth: %d %s, want 201", created.Code, created.Body)
 	}
 }
 
@@ -634,7 +797,7 @@ func TestTokenIDsAreNotReused(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "long enough")
 	create := func(name string) int64 {
-		rec := s.do(request{method: http.MethodPost, path: "/api/v1/tokens", cookie: admin, body: `{"name":"` + name + `"}`})
+		rec := s.do(request{method: http.MethodPost, path: "/api/v1/tokens", cookie: admin, body: `{"name":"` + name + `","password":"long enough"}`})
 		var out struct{ Token struct{ ID int64 } }
 		if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &out) != nil {
 			t.Fatalf("create %s: %d %s", name, rec.Code, rec.Body)

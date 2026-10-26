@@ -55,7 +55,8 @@ tracking, auth, jobs, or the API shape.
    Every non-GET request passes `http.CrossOriginProtection` (wired in
    `NewRouter`), so state-changing endpoints must not be GETs.
    Data API handlers use `withUser`, which accepts a session cookie or an
-   API token (`Authorization: Bearer wt_...`). Account and token
+   API token (`Authorization: Bearer wt_...`; other `Authorization`
+   headers are ignored). Account and token
    management use `withSession` (browser session only; 401 without one,
    403 `session_required` for a token) or `withAdmin` (also 403 for
    non-admins); the domain function takes the acting session and re-checks

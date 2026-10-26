@@ -72,7 +72,11 @@ themselves. `catalog` and `tracking` decide what gets stored.
    re-check the acting admin through their session's token hash (IDs can
    be reused after a delete), login re-checks that the verified hash is
    still current, and a password change only replaces the hash it
-   verified. See `SECURITY.md` before changing any of this.
+   verified. Data API handlers (`withUser`) get a `User`, not the token or
+   session, so a write that must not happen after a revoke has to re-check
+   its credential in its own transaction; today a request authenticated
+   just before a revoke can still finish one write. See `SECURITY.md`
+   before changing any of this.
 10. **HTTP API.** Routes under `/api/v1`, JSON only, one error shape.
     Anything not under `/api/`, `/healthz`, or a built asset returns the
     SPA's `index.html`, except missing files under `/_app/`, which 404 so

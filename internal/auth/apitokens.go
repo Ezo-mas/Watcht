@@ -39,10 +39,16 @@ type APIToken struct {
 }
 
 // CreateAPIToken makes a token that acts as the actor on the data API, and
-// returns its secret, which is shown once and never stored.
-func (s *Service) CreateAPIToken(ctx context.Context, actor Session, name string) (APIToken, string, error) {
+// returns its secret, which is shown once and never stored. It needs the
+// actor's current password (ErrInvalidCredentials if wrong): a token
+// outlives logout and password changes, so someone at an unlocked browser
+// mustn't be able to mint one (maintainer decision, 2026-10-26).
+func (s *Service) CreateAPIToken(ctx context.Context, actor Session, password, name string) (APIToken, string, error) {
 	name = strings.TrimSpace(name)
 	if err := validateTokenName(name); err != nil {
+		return APIToken{}, "", err
+	}
+	if err := s.verifyOwnPassword(ctx, actor, password); err != nil {
 		return APIToken{}, "", err
 	}
 	raw, hash := newToken()
@@ -129,8 +135,11 @@ func validateTokenName(name string) error {
 		return fmt.Errorf("%w: use 1-%d characters", ErrInvalidTokenName, maxTokenNameChars)
 	}
 	for _, r := range name {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("%w: no control characters", ErrInvalidTokenName)
+		// Control and invisible formatting characters (bidi overrides,
+		// zero-width spaces, line separators) could make two names look
+		// alike or garble the list.
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
+			return fmt.Errorf("%w: no control or invisible formatting characters", ErrInvalidTokenName)
 		}
 	}
 	return nil

@@ -131,8 +131,9 @@ func (s *authServer) deleteUserAs(admin *http.Cookie, id int64) *httptest.Respon
 }
 
 // Account endpoints need a signed-in session. A missing or stale cookie is
-// 401, and an Authorization header never stands in for one (403
-// session_required): API tokens don't reach account management.
+// 401, and a watcht API token never stands in for one (403
+// session_required): API tokens don't reach account management. Other
+// Authorization headers (a proxy's Basic auth) are ignored.
 func TestAccountEndpointsNeedASession(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
@@ -151,7 +152,9 @@ func TestAccountEndpointsNeedASession(t *testing.T) {
 		code   string
 	}{
 		"no cookie":    {request{}, http.StatusUnauthorized, "unauthenticated"},
-		"bearer token": {request{header: map[string]string{"Authorization": "Bearer whatever"}}, http.StatusForbidden, "session_required"},
+		"API token":    {request{header: map[string]string{"Authorization": "Bearer wt_whatever"}}, http.StatusForbidden, "session_required"},
+		"basic auth":   {request{header: map[string]string{"Authorization": "Basic dXNlcjpwYXNz"}}, http.StatusUnauthorized, "unauthenticated"},
+		"other bearer": {request{header: map[string]string{"Authorization": "Bearer eyJhbGciOi"}}, http.StatusUnauthorized, "unauthenticated"},
 		"stale cookie": {request{cookie: &http.Cookie{Name: sessionCookie, Value: "stale"}}, http.StatusUnauthorized, "unauthenticated"},
 	}
 	for _, route := range routes {
@@ -604,5 +607,22 @@ func TestDeletedAdminGets401(t *testing.T) {
 	rec = s.do(request{method: "POST", path: "/api/v1/users", cookie: b, body: `{"username":"c","password":"long enough"}`})
 	if rec.Code != http.StatusUnauthorized || decodeError(t, rec).Code != "unauthenticated" {
 		t.Errorf("deleted admin creates an account: %d %s, want 401 unauthenticated", rec.Code, rec.Body)
+	}
+}
+
+// Behind a reverse proxy with HTTP Basic auth, the browser sends an
+// Authorization header with every request; account management must still
+// work with the session cookie.
+func TestAccountsWorkBehindBasicAuthProxy(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	admin := s.setup("admin", "admin password")
+	basic := map[string]string{"Authorization": "Basic dXNlcjpwYXNz"}
+	if rec := s.do(request{method: http.MethodGet, path: "/api/v1/users", cookie: admin, header: basic}); rec.Code != http.StatusOK {
+		t.Errorf("GET /users with a session and Basic auth: %d %s, want 200", rec.Code, rec.Body)
+	}
+	rec := s.do(request{method: http.MethodPut, path: "/api/v1/me/password", cookie: admin, header: basic,
+		body: `{"current_password":"admin password","new_password":"new password"}`})
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("PUT /me/password with a session and Basic auth: %d %s, want 204", rec.Code, rec.Body)
 	}
 }
