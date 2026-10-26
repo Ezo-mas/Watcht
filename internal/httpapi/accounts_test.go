@@ -582,3 +582,23 @@ func TestInvalidNewPasswordDoesNotUseAnAttempt(t *testing.T) {
 		t.Errorf("valid change after rejected ones: %d %s, want 204", rec.Code, rec.Body)
 	}
 }
+
+// An admin whose account is deleted while their request is in flight (here:
+// before it arrives, with the cookie still in hand) gets 401 and the cookie
+// cleared, not a 403.
+func TestDeletedAdminGets401(t *testing.T) {
+	s := newAuthServer(t, authServerOptions{})
+	a := s.setup("admin", "long enough")
+	rec := s.do(request{method: "POST", path: "/api/v1/users", cookie: a, body: `{"username":"b","password":"long enough","is_admin":true}`})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create b: %d %s", rec.Code, rec.Body)
+	}
+	b := sessionCookieFrom(t, s.do(request{method: "POST", path: "/api/v1/auth/login", body: creds("b", "long enough")}))
+	if _, err := s.db.Write.Exec("DELETE FROM users WHERE username = 'b'"); err != nil {
+		t.Fatal(err)
+	}
+	rec = s.do(request{method: "POST", path: "/api/v1/users", cookie: b, body: `{"username":"c","password":"long enough"}`})
+	if rec.Code != http.StatusUnauthorized || decodeError(t, rec).Code != "unauthenticated" {
+		t.Errorf("deleted admin creates an account: %d %s, want 401 unauthenticated", rec.Code, rec.Body)
+	}
+}

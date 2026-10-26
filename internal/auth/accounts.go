@@ -229,12 +229,12 @@ func (s *Service) ChangePassword(ctx context.Context, actor Session, current, pa
 }
 
 // recheckAdmin returns the actor's account as it is now, inside the write
-// transaction q belongs to, or ErrForbidden if their session has ended or
-// they are no longer an admin.
+// transaction q belongs to: ErrNoSession if their session has ended (or
+// their account was deleted), ErrForbidden if they're no longer an admin.
 func (s *Service) recheckAdmin(ctx context.Context, q *sqlc.Queries, actor Session) (User, error) {
 	row, err := q.GetSession(ctx, sqlc.GetSessionParams{TokenHash: actor.tokenHash, Now: db.Timestamp(s.now())})
 	if errors.Is(err, sql.ErrNoRows) {
-		return User{}, ErrForbidden
+		return User{}, ErrNoSession
 	}
 	if err != nil {
 		return User{}, fmt.Errorf("recheck session: %w", err)

@@ -262,8 +262,8 @@ func TestAdminsCantDeleteEachOther(t *testing.T) {
 	if err := s.DeleteAccount(ctx, a, b.User.ID); err != nil {
 		t.Fatalf("A deletes B: %v", err)
 	}
-	if err := s.DeleteAccount(ctx, b, a.User.ID); !errors.Is(err, ErrForbidden) {
-		t.Errorf("B (already deleted) deletes A: %v, want ErrForbidden", err)
+	if err := s.DeleteAccount(ctx, b, a.User.ID); !errors.Is(err, ErrNoSession) {
+		t.Errorf("B (already deleted) deletes A: %v, want ErrNoSession", err)
 	}
 	if _, err := s.Authenticate(ctx, a.Token); err != nil {
 		t.Errorf("A was deleted: %v", err)
@@ -292,14 +292,14 @@ func TestDeletedAdminCantActThroughAReusedID(t *testing.T) {
 	if newcomer.ID != b.User.ID {
 		t.Fatalf("newcomer got ID %d, not the freed %d; the test needs SQLite to reuse it", newcomer.ID, b.User.ID)
 	}
-	if _, err := s.CreateAccount(ctx, b, "sneaky", "long enough", true); !errors.Is(err, ErrForbidden) {
-		t.Errorf("CreateAccount by the deleted admin: %v, want ErrForbidden", err)
+	if _, err := s.CreateAccount(ctx, b, "sneaky", "long enough", true); !errors.Is(err, ErrNoSession) {
+		t.Errorf("CreateAccount by the deleted admin: %v, want ErrNoSession", err)
 	}
-	if err := s.ResetPassword(ctx, b, a.User.ID, "taken over!"); !errors.Is(err, ErrForbidden) {
-		t.Errorf("ResetPassword by the deleted admin: %v, want ErrForbidden", err)
+	if err := s.ResetPassword(ctx, b, a.User.ID, "taken over!"); !errors.Is(err, ErrNoSession) {
+		t.Errorf("ResetPassword by the deleted admin: %v, want ErrNoSession", err)
 	}
-	if err := s.DeleteAccount(ctx, b, a.User.ID); !errors.Is(err, ErrForbidden) {
-		t.Errorf("DeleteAccount by the deleted admin: %v, want ErrForbidden", err)
+	if err := s.DeleteAccount(ctx, b, a.User.ID); !errors.Is(err, ErrNoSession) {
+		t.Errorf("DeleteAccount by the deleted admin: %v, want ErrNoSession", err)
 	}
 }
 
@@ -374,9 +374,9 @@ func TestConcurrentPasswordChanges(t *testing.T) {
 			t.Errorf("y's change: %v", err)
 		}
 	})
-	err = s.ChangePassword(ctx, x, "member password", "x's password")
-	if !errors.Is(err, ErrNoSession) && !errors.Is(err, ErrInvalidCredentials) {
-		t.Errorf("x's change after y's committed: %v, want it refused", err)
+	// y's change ended x's session, which is checked first.
+	if err := s.ChangePassword(ctx, x, "member password", "x's password"); !errors.Is(err, ErrNoSession) {
+		t.Errorf("x's change after y's committed: %v, want ErrNoSession", err)
 	}
 	if _, err := s.Login(ctx, "member", "y's password"); err != nil {
 		t.Errorf("y's password was overwritten: %v", err)
