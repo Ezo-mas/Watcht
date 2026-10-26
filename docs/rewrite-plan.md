@@ -113,6 +113,7 @@ Use two `*sql.DB` handles: a write pool limited to one connection, and a read po
 - Enums are `TEXT` with a `CHECK` constraint.
 - Tables are `STRICT` so SQLite enforces column types.
 - Integer primary keys everywhere; user-facing IDs are the same integers (this is a single-household app, so there's no need to hide them).
+- `users.id` is `AUTOINCREMENT` (maintainer decision, 2026-10-26), so a deleted account's ID is never given to a new one: anything still holding the old ID (a job payload, an open admin page) can't end up acting on someone else. Other tables use plain integer keys.
 
 ### Tables
 
@@ -315,13 +316,15 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - Admin user management, API tokens.
 - Svelte `/setup`, `/login`, and an authenticated layout.
 - **Done when:** a fresh instance walks through setup and the dashboard is only reachable when signed in.
-- **Status: in progress**, in five slices: (1) schema and the `internal/auth` service (passwords, setup, login, sessions, rate limiter); (2) the HTTP endpoints, session cookie, and CSRF; (3) admin user management, password changes, and API tokens; (4) the SPA's `/setup`, `/login`, and signed-in layout; (5) settings pages for passwords, tokens, and users.
+- **Status: in progress**, in six slices: (1) schema and the `internal/auth` service (passwords, setup, login, sessions, rate limiter); (2) the HTTP endpoints, session cookie, and CSRF; (3) admin user management and password changes; (4) API tokens; (5) the SPA's `/setup`, `/login`, and signed-in layout; (6) settings pages for passwords, tokens, and users.
+  - Confirmed by the maintainer (2026-10-26): the password, session-renewal, login-limit, and no-sub-path choices below.
   - Passwords: argon2id with RFC 9106's memory-constrained parameters (64 MiB, 3 passes, 4 lanes), stored in PHC format so the cost can change later. At most two hashes run at once, bounding memory on small machines. At least 8 characters, at most 256 bytes; no composition rules.
   - A login for an unknown user is checked against a dummy hash with the same cost, so response time doesn't reveal which usernames exist.
-  - Sessions renew their 30-day expiry at most once a day, so most requests don't write. Expired sessions are deleted at login until the job scheduler exists (M3).
+  - Sessions renew their 30-day expiry at most once a day, so most requests don't write. Expired sessions are deleted at login until the job scheduler exists; M3 moves that cleanup into a scheduled job.
   - Slice 2 endpoints: `GET /api/v1/auth/session` (whether setup is needed, and the signed-in user; never 401, so the SPA can call it on startup), `POST /api/v1/auth/setup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`. The session cookie is `watcht_session`: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when the request came over HTTPS (directly, via a trusted proxy's `X-Forwarded-Proto`, or with an `https` `WATCHT_BASE_URL`).
   - Login limit: 10 attempts per client IP (per /64 for IPv6), then one a minute; successful logins don't count. The client IP comes from `X-Forwarded-For` only when the peer is a trusted proxy, read from the right. A login waits at most 10 seconds for a password-hashing slot, then gets 503.
-  - For the self-hosting docs (M6): set `WATCHT_TRUSTED_PROXIES` to the proxy's own address only, not a whole Docker or LAN range that also holds clients, or those clients can choose their IP. Without it, every client behind the proxy shares one login limit, so one person guessing passwords locks the household out for a while; watcht logs a warning the first time it sees `X-Forwarded-For` from an untrusted peer. `/0` ranges are refused. With an `https` `WATCHT_BASE_URL` the cookie is `Secure`, so signing in over plain `http://<lan-ip>` won't stick. Cookies aren't isolated by port, so other apps on the same host name can see `watcht_session`; a host name of its own is safer.
+  - Slice 3 endpoints, all needing a browser session (never an API token): `PUT /api/v1/me/password` (current password required; ends the user's other sessions; limited like logins, per account), and for admins `GET`/`POST /api/v1/users`, `DELETE /api/v1/users/{id}`, and `PUT /api/v1/users/{id}/password` (a reset for someone who forgot theirs; ends all their sessions). Admins can't delete their own account, so one admin always remains, and reset their own password through `/me/password`. The admin flag is set when an account is created; changing it later isn't built yet.
+  - For the self-hosting docs (M6): set `WATCHT_TRUSTED_PROXIES` to the proxy's own address only, not a whole Docker or LAN range that also holds clients, or those clients can choose their IP. Without it, every client behind the proxy shares one login limit, so one person guessing passwords locks the household out for a while; watcht logs a warning the first time it sees `X-Forwarded-For` from an untrusted peer. `/0` ranges are refused. When TLS ends at the proxy, watcht can't see the original scheme itself: it learns it either from the proxy's `X-Forwarded-Proto` (believed only from trusted proxies) or from an `https` `WATCHT_BASE_URL`. The docs recommend the base URL, which needs no headers and can't be spoofed; a proxy that sends no `X-Forwarded-Proto` with no base URL set means cookies without `Secure`, so watcht warns at startup when trusted proxies are set without an `https` base URL. With an `https` `WATCHT_BASE_URL` the cookie is always `Secure`, so signing in over plain `http://<lan-ip>` won't stick. Cookies aren't isolated by port, so other apps on the same host name can see `watcht_session`; a host name of its own is safer.
 
 ### M3: Catalog and TMDB
 
@@ -329,7 +332,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - TMDB provider with caching and rate limiting; search and detail endpoints.
 - Upsert movies, shows, seasons, and episodes by external ID, with episodes anchored on TMDB episode ID.
 - TMDB attribution in the footer and About page; optional image cache.
-- Job worker and scheduler, with a metadata refresh job.
+- Job worker and scheduler, with a metadata refresh job, and a job that deletes expired sessions (moved from login, where M2 left it).
 - **Done when:** you can search for a title and open its detail page.
 
 ### M4: Tracking parity

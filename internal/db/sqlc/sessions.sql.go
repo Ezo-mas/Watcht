@@ -9,9 +9,10 @@ import (
 	"context"
 )
 
-const createSession = `-- name: CreateSession :exec
+const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
 VALUES (?1, ?2, ?3, ?4)
+RETURNING id
 `
 
 type CreateSessionParams struct {
@@ -21,14 +22,16 @@ type CreateSessionParams struct {
 	ExpiresAt string
 }
 
-func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
-	_, err := q.db.ExecContext(ctx, createSession,
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, createSession,
 		arg.TokenHash,
 		arg.UserID,
 		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
-	return err
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
@@ -46,6 +49,22 @@ DELETE FROM sessions WHERE token_hash = ?1
 
 func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	_, err := q.db.ExecContext(ctx, deleteSession, tokenHash)
+	return err
+}
+
+const deleteUserSessions = `-- name: DeleteUserSessions :exec
+DELETE FROM sessions WHERE user_id = ?1 AND id != ?2
+`
+
+type DeleteUserSessionsParams struct {
+	UserID int64
+	KeepID int64
+}
+
+// DeleteUserSessions ends every session of a user except keep_id (pass 0
+// to end them all).
+func (q *Queries) DeleteUserSessions(ctx context.Context, arg DeleteUserSessionsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUserSessions, arg.UserID, arg.KeepID)
 	return err
 }
 
