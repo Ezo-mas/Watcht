@@ -23,10 +23,18 @@ func (h *authHandlers) registerAccounts(api *apiMux) {
 type sessionHandler func(http.ResponseWriter, *http.Request, auth.Session)
 
 // withSession requires a valid session cookie: 401 without one. Account
-// management needs a browser session, so an API token (slice 4) never
-// gets here, even for an admin.
+// and token management need a browser session, so an API token never
+// gets here, even an admin's: a leaked token can't take over an account.
+//
+// As in withUser, an Authorization header decides: with one, the request
+// is treated as a token request (403 session_required) even if it also has
+// a cookie, so the rule is the same on every endpoint.
 func (h *authHandlers) withSession(next sessionHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if hasAuthorization(r) {
+			writeError(w, http.StatusForbidden, "session_required", "API tokens can't manage accounts or tokens; sign in with a browser")
+			return
+		}
 		sess, ok, err := h.currentSession(w, r)
 		if err != nil {
 			h.internalError(w, "authenticate", err)

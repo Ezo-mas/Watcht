@@ -65,6 +65,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 	}
 	authAPI.register(api)
 	authAPI.registerAccounts(api)
+	authAPI.registerTokens(api)
 
 	mux := http.NewServeMux()
 

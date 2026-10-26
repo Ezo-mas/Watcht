@@ -131,8 +131,8 @@ func (s *authServer) deleteUserAs(admin *http.Cookie, id int64) *httptest.Respon
 }
 
 // Account endpoints need a signed-in session. A missing or stale cookie is
-// 401, and an Authorization header never stands in for one: API tokens
-// don't reach account management.
+// 401, and an Authorization header never stands in for one (403
+// session_required): API tokens don't reach account management.
 func TestAccountEndpointsNeedASession(t *testing.T) {
 	s := newAuthServer(t, authServerOptions{})
 	admin := s.setup("admin", "admin password")
@@ -145,17 +145,21 @@ func TestAccountEndpointsNeedASession(t *testing.T) {
 		{method: http.MethodDelete, path: idPath(victim.ID, "")},
 		{method: http.MethodPut, path: idPath(victim.ID, "/password"), body: jsonBody(t, map[string]string{"password": "hijacked password"})},
 	}
-	credentials := map[string]request{
-		"no cookie":    {},
-		"bearer token": {header: map[string]string{"Authorization": "Bearer whatever"}},
-		"stale cookie": {cookie: &http.Cookie{Name: sessionCookie, Value: "stale"}},
+	credentials := map[string]struct {
+		req    request
+		status int
+		code   string
+	}{
+		"no cookie":    {request{}, http.StatusUnauthorized, "unauthenticated"},
+		"bearer token": {request{header: map[string]string{"Authorization": "Bearer whatever"}}, http.StatusForbidden, "session_required"},
+		"stale cookie": {request{cookie: &http.Cookie{Name: sessionCookie, Value: "stale"}}, http.StatusUnauthorized, "unauthenticated"},
 	}
 	for _, route := range routes {
-		for name, extra := range credentials {
+		for name, c := range credentials {
 			req := route
-			req.cookie, req.header = extra.cookie, extra.header
+			req.cookie, req.header = c.req.cookie, c.req.header
 			t.Run(route.method+" "+route.path+" with "+name, func(t *testing.T) {
-				expectError(t, s.do(req), http.StatusUnauthorized, "unauthenticated")
+				expectError(t, s.do(req), c.status, c.code)
 			})
 		}
 	}
