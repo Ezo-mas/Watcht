@@ -11,9 +11,25 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
   the API client.
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`, `$props`). Don't use
   legacy `export let` props or `$:` reactive statements.
-- **API access** only through `web/src/lib/api/`. It handles JSON, the
-  standard error shape, and redirecting to `/login` on `401`. Components
-  don't call `fetch` directly.
+- **API access** only through `web/src/lib/api/`: `api()` in `client.ts`
+  sends JSON with same-origin cookies and throws an `ApiError` (`status`,
+  `code`, `message` from the standard error shape; status 0 when the
+  server can't be reached). A 401 `unauthenticated` re-runs the session
+  check, which redirects to `/login`; other 401s (a wrong password) are
+  just errors. Components don't call `fetch` directly.
+- **Auth routing** lives in the root `+layout.ts` (`load` calls
+  `getSession` and `guard` from `web/src/lib/guard.ts`). Signed-in pages
+  go under `src/routes/(app)/`. After a sign-in or sign-out, navigate with
+  `goto(target, { invalidate: ['app:session'] })` so the guard runs again
+  against the new session (read anything you need from the current URL
+  first). Never redirect to a `?next=` value without `safeNext()`. If the
+  session check can't reach the server, the root layout shows a "can't
+  reach watcht" card itself: an error page would re-run the same load.
+- **Imports and links.** `#lib/...` is a package subpath import, so it
+  needs the file extension (`#lib/api/client.js`). Internal links and
+  `goto` go through `resolve()` from `$app/paths` (lint enforces it): a
+  leading `/` is a route ID (`resolve('/(app)')` is the dashboard),
+  anything else a pathname (`resolve('history')`).
 - **Types** for API responses live in `web/src/lib/api/types.ts` and must
   match the Go handlers. Update both in the same change.
 - **Styling** with Tailwind. Keep the dense, information-first layout;
@@ -63,7 +79,19 @@ browser (the `watcht-designer` agent does this with the Playwright tools).
 4. Stop the server by PID and delete any `.playwright-mcp/`
    folder the browser tools left in the repository root.
 
-From M1 on, start the server with a throwaway data directory under `/tmp`
-so no real data is touched; from M3 on, seed sample data from recorded
-fixtures rather than live TMDB calls. These steps will be added here when
-those milestones land.
+Start the server with a throwaway data directory
+(`WATCHT_DATA_DIR=$(mktemp -d)`) so no real data is touched. A fresh
+instance opens on `/setup`; to skip it, create the admin with
+`curl -H 'Content-Type: application/json' -d '{"username":"admin","password":"long enough"}' http://127.0.0.1:8099/api/v1/auth/setup`
+and sign in. Session cookies aren't separated by port, so two local
+instances on 127.0.0.1 sign each other out. From M3 on, seed sample data
+from recorded fixtures rather than live TMDB calls; those steps will be
+added here then.
+
+Design tokens (colours, focus ring) are defined once in
+`src/routes/layout.css` with Tailwind's `@theme`, and switch with
+`prefers-color-scheme`. `src/error.html` repeats them inline because
+SvelteKit uses it when the app itself can't start; keep the two in step.
+Shared pieces live in `src/lib/components/` (`Button`, `Field`,
+`CardPage`, `Wordmark`). No external fonts or CDNs: watcht may run
+offline.

@@ -1,1 +1,76 @@
 @import 'tailwindcss';
+
+/*
+ * Design tokens. Light values live in @theme; the dark overrides below
+ * swap the same variables, so utilities such as bg-surface or text-muted
+ * work in both themes without dark: variants.
+ */
+@theme {
+	--font-sans:
+		system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue',
+		Arial, sans-serif;
+
+	/* Page background, raised panels, and form fields. */
+	--color-canvas: #eef1f5;
+	--color-surface: #ffffff;
+	--color-field: #f8f9fb;
+	/* Hairlines between areas; field borders (3:1 against surface). */
+	--color-line: #d5dbe4;
+	--color-line-strong: #7d889a;
+	/* Text: primary and secondary (AA on canvas and surface). */
+	--color-ink: #151b26;
+	--color-muted: #535e70;
+	/* Amber accent: fills, text on fills, accent-coloured text, focus rings. */
+	--color-accent: #e3961f;
+	--color-accent-hover: #d08614;
+	--color-on-accent: #1c1204;
+	--color-accent-text: #8f5300;
+	--color-focus: #a35d00;
+	--color-danger: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-canvas: #131a24;
+		--color-surface: #1a2230;
+		--color-field: #121923;
+		--color-line: #2b3546;
+		--color-line-strong: #6b788e;
+		--color-ink: #e7eaf0;
+		--color-muted: #9da7b9;
+		--color-accent: #f0a73a;
+		--color-accent-hover: #f6b95e;
+		--color-on-accent: #1c1204;
+		--color-accent-text: #f3b555;
+		--color-focus: #f0a73a;
+		--color-danger: #ff8f80;
+	}
+}
+
+@layer base {
+	:root {
+		color-scheme: light dark;
+	}
+
+	html {
+		background-color: var(--color-canvas);
+		color: var(--color-ink);
+		-webkit-text-size-adjust: 100%;
+	}
+
+	/* One focus ring for every control, shown for keyboard focus. */
+	:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		::before,
+		::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+		}
+	}
+}
