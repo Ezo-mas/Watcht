@@ -77,4 +77,11 @@ status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/js
 status=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d "$creds" "$api/login")
 [[ $status == 200 ]] || fail "login returned $status, want 200"
 
+# An API token, created with the session, works on the data API.
+created=$(curl -fsS -b "$cookie" -H 'Content-Type: application/json' -d "{\"name\":\"smoke\",\"password\":\"smoke-test-password\"}" "$base/api/v1/tokens")
+secret=$(grep -o '"secret":"wt_[A-Za-z0-9_-]*"' <<<"$created" | cut -d'"' -f4)
+[[ -n $secret ]] || fail "creating an API token returned no secret: $created"
+curl -fsS -H "Authorization: Bearer $secret" "$base/api/v1/me" | grep -q '"username":"smoke"' ||
+	fail "GET /api/v1/me with the API token didn't return the user"
+
 echo "smoke: ok ($base, $asset)"

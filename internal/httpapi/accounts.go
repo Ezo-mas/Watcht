@@ -23,10 +23,18 @@ func (h *authHandlers) registerAccounts(api *apiMux) {
 type sessionHandler func(http.ResponseWriter, *http.Request, auth.Session)
 
 // withSession requires a valid session cookie: 401 without one. Account
-// management needs a browser session, so an API token (slice 4) never
-// gets here, even for an admin.
+// and token management need a browser session, so an API token never
+// gets here, even an admin's: a leaked token can't take over an account.
+//
+// As in withUser, a watcht token in the Authorization header decides: the
+// request is a token request (403 session_required) even if it also has a
+// cookie. Other Authorization headers (a proxy's Basic auth) are ignored.
 func (h *authHandlers) withSession(next sessionHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := apiToken(r); ok {
+			writeError(w, http.StatusForbidden, "session_required", "API tokens can't manage accounts or tokens; sign in with a browser")
+			return
+		}
 		sess, ok, err := h.currentSession(w, r)
 		if err != nil {
 			h.internalError(w, "authenticate", err)
@@ -101,7 +109,7 @@ func (h *authHandlers) createUser(w http.ResponseWriter, r *http.Request, sess a
 }
 
 func (h *authHandlers) deleteUser(w http.ResponseWriter, r *http.Request, sess auth.Session) {
-	id, ok := pathID(w, r)
+	id, ok := pathID(w, r, "no such account")
 	if !ok {
 		return
 	}
@@ -113,7 +121,7 @@ func (h *authHandlers) deleteUser(w http.ResponseWriter, r *http.Request, sess a
 }
 
 func (h *authHandlers) resetPassword(w http.ResponseWriter, r *http.Request, sess auth.Session) {
-	id, ok := pathID(w, r)
+	id, ok := pathID(w, r, "no such account")
 	if !ok {
 		return
 	}
@@ -136,11 +144,8 @@ func (h *authHandlers) resetPassword(w http.ResponseWriter, r *http.Request, ses
 // password is a password guess, so it shares the login limiter, keyed by
 // account: someone at an unlocked browser can't use it to brute-force.
 func (h *authHandlers) changePassword(w http.ResponseWriter, r *http.Request, sess auth.Session) {
-	key := "account:" + strconv.FormatInt(sess.User.ID, 10)
-	ok, retry := h.limiter.Take(key)
+	key, ok := h.takeAccountAttempt(w, sess)
 	if !ok {
-		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())))
-		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again later")
 		return
 	}
 	var req struct {
@@ -173,6 +178,20 @@ func (h *authHandlers) changePassword(w http.ResponseWriter, r *http.Request, se
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// takeAccountAttempt uses one of the account's password-guess attempts
+// (changing the password, creating an API token), or answers 429. The
+// caller refunds it unless a wrong password was judged.
+func (h *authHandlers) takeAccountAttempt(w http.ResponseWriter, sess auth.Session) (string, bool) {
+	key := "account:" + strconv.FormatInt(sess.User.ID, 10)
+	ok, retry := h.limiter.Take(key)
+	if !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())))
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many attempts; try again later")
+		return "", false
+	}
+	return key, true
+}
+
 // accountError maps account-management errors to responses.
 func (h *authHandlers) accountError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	switch {
@@ -201,11 +220,11 @@ func (h *authHandlers) accountError(w http.ResponseWriter, r *http.Request, op s
 
 // pathID parses the {id} path segment. Anything but a positive integer is
 // a 404, like an ID that doesn't exist.
-func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func pathID(w http.ResponseWriter, r *http.Request, notFound string) (int64, bool) {
 	s := r.PathValue("id")
 	id, err := strconv.ParseInt(s, 10, 64)
 	if err != nil || id <= 0 || strings.HasPrefix(s, "+") {
-		writeError(w, http.StatusNotFound, "not_found", "no such account")
+		writeError(w, http.StatusNotFound, "not_found", notFound)
 		return 0, false
 	}
 	return id, true

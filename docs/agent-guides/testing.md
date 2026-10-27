@@ -9,7 +9,7 @@ done"). This guide is the full command reference.
 make check         # everything CI runs except Docker; the definition of done
 make check-go      # go vet, golangci-lint, go test
 make check-web     # svelte-check, prettier, eslint, vitest, vite build
-make smoke         # full build, then start the binary and check it (health, SPA, setup, login, CSRF)
+make smoke         # full build, then start the binary and check it (health, SPA, setup, login, CSRF, API token)
 make build         # frontend, then bin/watcht with it embedded
 make docker-smoke  # build the image, run it, wait for healthy, smoke-test it
 make run           # build and run on :8080
