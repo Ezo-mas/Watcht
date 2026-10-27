@@ -11,7 +11,9 @@ watcht is being rewritten from Next.js + PostgreSQL to a Go server with an
 embedded SvelteKit SPA and SQLite, following the milestones in
 `docs/rewrite-plan.md`. The legacy app has been removed; it's kept at the
 git tag `legacy-nextjs` as a reference for features and UI only. Don't port
-its code line by line.
+its code line by line. Each milestone's status, and the decisions made
+while building it, are recorded under it in the plan; read the current
+milestone's notes before starting.
 
 ## Behavior rules
 

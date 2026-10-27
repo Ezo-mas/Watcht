@@ -16,7 +16,7 @@ The UI favours information density and workflow speed, in the spirit of classic 
 
 ## Status
 
-watcht is being rewritten from scratch: the original Next.js + PostgreSQL prototype is being replaced by a Go server with a SvelteKit frontend and SQLite storage. The rewrite is at its first milestone, so there's nothing usable yet.
+watcht is being rewritten from scratch: the original Next.js + PostgreSQL prototype is being replaced by a Go server with a SvelteKit frontend and SQLite storage. Accounts work (first-run setup, sign-in, household users, API tokens); tracking films and shows comes in the next milestones, so there's nothing to track yet.
 
 The full plan, including architecture, schema, and milestones, is in [docs/rewrite-plan.md](docs/rewrite-plan.md).
 

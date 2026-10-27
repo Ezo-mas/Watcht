@@ -26,7 +26,11 @@
 	--color-on-accent: #1c1204;
 	--color-accent-text: #8f5300;
 	--color-focus: #a35d00;
+	/* Destructive actions and errors; text on a danger fill. */
 	--color-danger: #b42318;
+	--color-on-danger: #ffffff;
+	/* Success notes (AA on surface and on its 10% tint). */
+	--color-ok: #146c2e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +48,8 @@
 		--color-accent-text: #f3b555;
 		--color-focus: #f0a73a;
 		--color-danger: #ff8f80;
+		--color-on-danger: #2a0d09;
+		--color-ok: #6cc98a;
 	}
 }
 

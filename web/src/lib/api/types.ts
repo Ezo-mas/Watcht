@@ -18,3 +18,23 @@ export interface SessionStatus {
 	setup_required: boolean;
 	user: User | null;
 }
+
+/** An account in admin user management (internal/httpapi accountJSON). */
+export interface Account extends User {
+	/** UTC, RFC 3339. */
+	created_at: string;
+}
+
+/** An API token's description; the secret is only in CreatedToken. */
+export interface APIToken {
+	id: number;
+	name: string;
+	/** UTC, RFC 3339. */
+	created_at: string;
+}
+
+/** POST /api/v1/tokens: the secret is shown this once and never again. */
+export interface CreatedToken {
+	token: APIToken;
+	secret: string;
+}
