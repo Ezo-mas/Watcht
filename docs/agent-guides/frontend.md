@@ -25,6 +25,11 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
   first). Never redirect to a `?next=` value without `safeNext()`. If the
   session check can't reach the server, the root layout shows a "can't
   reach watcht" card itself: an error page would re-run the same load.
+- **Page data** comes from a `+page.ts` `load` that calls `#lib/api` with
+  the `fetch` it's given and declares a key with `depends('app:<name>')`
+  (`app:tokens`, `app:users`); after a change, `invalidate` that key to
+  reload. Admin-only pages check `session.user.is_admin` from `parent()`
+  and redirect; the server refuses non-admins anyway.
 - **Imports and links.** `#lib/...` is a package subpath import, so it
   needs the file extension (`#lib/api/client.js`). Internal links and
   `goto` go through `resolve()` from `$app/paths` (lint enforces it): a
@@ -37,8 +42,9 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
 - **Images** come from the URLs the API returns. Don't hardcode TMDB image
   URLs, because the optional image cache changes them.
 - **Attribution.** The TMDB notice in the footer and About page must stay.
-- **Dates** come from the API as UTC RFC 3339. Format them in the user's
-  time zone setting, not the browser's.
+- **Dates** come from the API as UTC RFC 3339. Format them with
+  `formatDate` (`#lib/format.js`), which will use the user's time zone
+  setting once M4 adds it (UTC until then), never the browser's zone.
 
 ## Commands (from `web/`)
 
@@ -93,5 +99,9 @@ Design tokens (colours, focus ring) are defined once in
 `prefers-color-scheme`. `src/error.html` repeats them inline because
 SvelteKit uses it when the app itself can't start; keep the two in step.
 Shared pieces live in `src/lib/components/` (`Button`, `Field`,
-`CardPage`, `Wordmark`). No external fonts or CDNs: watcht may run
+`CardPage`, `Panel`, `Notice`, `InlineConfirm`, `Wordmark`); reuse them
+before adding new ones. Destructive actions use `InlineConfirm`, never
+`window.confirm`. API errors become UI text through `errorMessage()` in
+`#lib/errors.js`, which maps error codes and falls back to the server's
+message. No external fonts or CDNs: watcht may run
 offline.
