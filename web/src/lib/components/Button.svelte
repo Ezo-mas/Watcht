@@ -2,8 +2,11 @@
 	import type { HTMLButtonAttributes } from 'svelte/elements';
 
 	interface Props extends HTMLButtonAttributes {
-		/** "primary" for the main action of a form, "quiet" for everything else. */
-		variant?: 'primary' | 'quiet';
+		/**
+		 * "primary" for the main action of a form, "quiet" for everything else,
+		 * "danger" for confirming something destructive (quiet-sized).
+		 */
+		variant?: 'primary' | 'quiet' | 'danger';
 		/** Disables the button and shows a spinner while an action runs. */
 		busy?: boolean;
 	}
@@ -30,6 +33,8 @@
 			'h-10 bg-accent px-4 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-70 disabled:hover:bg-accent',
 		variant === 'quiet' &&
 			'h-8 border border-line px-3 text-sm text-ink hover:border-line-strong hover:bg-canvas disabled:opacity-60',
+		variant === 'danger' &&
+			'h-8 bg-danger px-3 text-sm text-on-danger hover:bg-danger/90 disabled:opacity-70',
 		className
 	]}
 >
