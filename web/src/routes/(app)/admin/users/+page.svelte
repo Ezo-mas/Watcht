@@ -27,6 +27,7 @@
 	let newPassword = $state('');
 
 	function toggle(user: Account, kind: Open['kind']) {
+		if (rowBusy) return; // one row action at a time, so feedback lands on the right row
 		if (open?.user.id === user.id && open.kind === kind) return close();
 		open = { user, kind };
 		rowError = '';
@@ -44,10 +45,17 @@
 		if (was) document.getElementById(`${was.kind}-${was.user.id}`)?.focus();
 	}
 
-	async function rowFailed(e: unknown) {
+	async function rowFailed(e: unknown, user: Account) {
+		if (e instanceof ApiError && e.code === 'not_found') {
+			// Deleted meanwhile (another tab, another admin): the row is about
+			// to disappear, so say so outside it.
+			open = null;
+			note = `${user.username} no longer exists.`;
+			await invalidate('app:users');
+			listHeading?.focus();
+			return;
+		}
 		rowError = errorMessage(e);
-		// Deleted meanwhile (another tab, another admin): refresh the list.
-		if (e instanceof ApiError && e.code === 'not_found') await invalidate('app:users');
 	}
 
 	async function submitReset(event: SubmitEvent) {
@@ -59,8 +67,8 @@
 		try {
 			await resetPassword(user.id, newPassword);
 		} catch (e) {
-			await rowFailed(e);
 			rowBusy = false;
+			await rowFailed(e, user);
 			return;
 		}
 		rowBusy = false;
@@ -79,8 +87,8 @@
 		try {
 			await deleteUser(user.id);
 		} catch (e) {
-			await rowFailed(e);
 			rowBusy = false;
+			await rowFailed(e, user);
 			return;
 		}
 		await invalidate('app:users');

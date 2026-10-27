@@ -316,7 +316,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - Admin user management, API tokens.
 - Svelte `/setup`, `/login`, and an authenticated layout.
 - **Done when:** a fresh instance walks through setup and the dashboard is only reachable when signed in.
-- **Status: done** (PRs #14–#19, stacked; each is retargeted to `main` after the one below it merges), in six slices: (1) schema and the `internal/auth` service (passwords, setup, login, sessions, rate limiter); (2) the HTTP endpoints, session cookie, and CSRF; (3) admin user management and password changes; (4) API tokens; (5) the SPA's `/setup`, `/login`, and signed-in layout; (6) settings pages for passwords, tokens, and users.
+- **Status: built, in review** (PRs #14–#19, stacked; each is retargeted to `main` after the one below it merges; mark this done when the last one merges), in six slices: (1) schema and the `internal/auth` service (passwords, setup, login, sessions, rate limiter); (2) the HTTP endpoints, session cookie, and CSRF; (3) admin user management and password changes; (4) API tokens; (5) the SPA's `/setup`, `/login`, and signed-in layout; (6) settings pages for passwords, tokens, and users.
   - Confirmed by the maintainer (2026-10-26): the password, session-renewal, login-limit, and no-sub-path choices below.
   - Passwords: argon2id with RFC 9106's memory-constrained parameters (64 MiB, 3 passes, 4 lanes), stored in PHC format so the cost can change later. At most two hashes run at once, bounding memory on small machines. At least 8 characters, at most 256 bytes; no composition rules.
   - A login for an unknown user is checked against a dummy hash with the same cost, so response time doesn't reveal which usernames exist.

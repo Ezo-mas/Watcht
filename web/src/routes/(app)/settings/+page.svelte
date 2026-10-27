@@ -62,6 +62,7 @@
 	let revokeError = $state('');
 
 	function askRevoke(token: APIToken) {
+		if (revokeBusy) return; // one revoke at a time, so feedback lands on the right row
 		if (confirming?.id === token.id) return cancelRevoke();
 		confirming = token;
 		revokeError = '';
@@ -84,10 +85,17 @@
 		try {
 			await revokeToken(token.id);
 		} catch (e) {
-			revokeError = errorMessage(e);
-			// Gone already (revoked in another tab): refresh the list.
-			if (e instanceof ApiError && e.code === 'not_found') await invalidate('app:tokens');
 			revokeBusy = false;
+			if (e instanceof ApiError && e.code === 'not_found') {
+				// Gone already (revoked in another tab): the row is about to
+				// disappear, so say so outside it.
+				confirming = null;
+				tokenNote = `“${token.name}” was already revoked.`;
+				await invalidate('app:tokens');
+				tokensHeading?.focus();
+				return;
+			}
+			revokeError = errorMessage(e);
 			return;
 		}
 		await invalidate('app:tokens');
@@ -119,7 +127,9 @@
 			created = { name: res.token.name, secret: res.secret };
 			copyNote = '';
 			tokenName = '';
-			await invalidate('app:tokens');
+			// The list refreshes on Done, not now: if the refresh failed, the
+			// error page would replace this one and the secret, which can't be
+			// shown again, would be lost.
 		} catch (e) {
 			createError = errorMessage(e, {
 				invalid_credentials: 'The password is wrong.',
@@ -149,6 +159,7 @@
 		created = null;
 		copyNote = '';
 		getSelection()?.removeAllRanges();
+		await invalidate('app:tokens');
 		await tick();
 		nameInput?.focus();
 	}
@@ -228,7 +239,7 @@
 		>
 			<Notice tone="success" message={tokenNote} class="mx-4 mt-4" />
 
-			{#if data.tokens.length === 0}
+			{#if data.tokens.length === 0 && !created}
 				<p class="px-4 py-4 text-sm text-muted">
 					No tokens yet. Create one below for each script or server, so you can revoke them one at a
 					time.
