@@ -20,15 +20,27 @@ const shutdownTimeout = 8 * time.Second
 // Run serves handler on addr until ctx is cancelled, then shuts down
 // gracefully. It returns nil after a clean shutdown.
 func Run(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
+	ln, err := Listen(ctx, addr)
+	if err != nil {
+		return err
+	}
+	return Serve(ctx, ln, handler, logger)
+}
+
+// Listen binds addr. Binding before anything else starts makes a second
+// server on the same address fail early, before it touches shared state.
+func Listen(ctx context.Context, addr string) (net.Listener, error) {
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", addr, err)
+		return nil, fmt.Errorf("listen on %s: %w", addr, err)
 	}
-	return serve(ctx, ln, handler, logger)
+	return ln, nil
 }
 
-func serve(ctx context.Context, ln net.Listener, handler http.Handler, logger *slog.Logger) error {
+// Serve serves handler on ln until ctx is cancelled, then shuts down
+// gracefully. It returns nil after a clean shutdown.
+func Serve(ctx context.Context, ln net.Listener, handler http.Handler, logger *slog.Logger) error {
 	srv := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,

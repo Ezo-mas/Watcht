@@ -21,7 +21,7 @@ func TestServeShutsDownOnCancel(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, ln, handler, slog.New(slog.DiscardHandler)) }()
+	go func() { done <- Serve(ctx, ln, handler, slog.New(slog.DiscardHandler)) }()
 
 	resp, err := http.Get("http://" + ln.Addr().String() + "/")
 	if err != nil {
@@ -37,10 +37,10 @@ func TestServeShutsDownOnCancel(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("serve() = %v, want nil after cancel", err)
+			t.Fatalf("Serve() = %v, want nil after cancel", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("serve() did not return after cancel")
+		t.Fatal("Serve() did not return after cancel")
 	}
 }
 

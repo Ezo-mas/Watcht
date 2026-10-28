@@ -423,8 +423,12 @@ func TestDeleteExpiredSessions(t *testing.T) {
 			t.Fatalf("CreateSession(%s): %v", tt.name, err)
 		}
 	}
-	if err := w.DeleteExpiredSessions(ctx, now); err != nil {
+	n, err := w.DeleteExpiredSessions(ctx, now)
+	if err != nil {
 		t.Fatalf("DeleteExpiredSessions: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("DeleteExpiredSessions deleted %d sessions, want 2", n)
 	}
 	for i, tt := range tests {
 		if got := sessionStored(t, r, tokens[i]); got != tt.kept {
