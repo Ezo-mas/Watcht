@@ -339,6 +339,12 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - TMDB attribution in the footer and About page; optional image cache.
 - Job worker and scheduler, with a metadata refresh job, and a job that deletes expired sessions (moved from login, where M2 left it).
 - **Done when:** you can search for a title and open its detail page.
+- **Status: in progress**, in slices: (1) the `jobs` table, worker, and scheduler, with expired-session cleanup moved into a job; (2) the `provider_cache` table and the shared provider HTTP client; (3) the TMDB adapter, tested against fixtures; (4) the catalog tables and upserts, and the metadata refresh job; (5) search and detail endpoints; (6) the SPA's search and detail pages and the TMDB attribution. The optional image cache is a later slice or moves to M6.
+  - Decided by the maintainer (2026-10-28):
+  - TMDB API key: the `WATCHT_TMDB_API_KEY` environment variable for now; an admin settings page may replace or override it later. Without a key the server still starts, and catalog endpoints return a clear "not configured" error.
+  - Detail pages and their API use the TMDB ID (`/movies/603` is TMDB movie 603), so opening a search result fetches and upserts it with no extra step, and URLs survive a reinstall. This is an exception to "user-facing IDs are the internal integers" for catalog items; internal IDs stay internal (joins, watch events).
+  - Metadata refresh: an item is refreshed when its metadata is older than its cache lifetime and its detail page was opened in the last 30 days (a `last_viewed_at` column). M4 adds "watched recently" to the same rule.
+  - TMDB client: a token bucket at 20 requests a second (TMDB allows about 40), retrying 429s after `Retry-After`. Cache lifetimes: search 1 day; movies and ended shows 7 days; ongoing shows and seasons 1 day; external ID lookups 30 days. Raise them later if needed.
 
 ### M4: Tracking parity
 
