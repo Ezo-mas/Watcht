@@ -3,17 +3,29 @@ name: ci
 on:
   push:
     branches: [main]
+    # Nothing here is built, tested, or copied into the image.
+    paths-ignore: &ignored
+      - '**.md'
+      - 'docs/**'
+      - '.claude/**'
+      - 'LICENSE'
   pull_request:
+    paths-ignore: *ignored
 
 permissions:
   contents: read
 
+# A new push to a PR cancels that PR's run still in progress; runs on main
+# finish, so every commit there gets a result.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   go:
+    # A merge commit was already tested as the PR's merge ref, so its push to
+    # main is skipped; direct pushes and squash merges still run.
+    if: &not-merge-push github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Merge pull request')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -35,6 +47,7 @@ jobs:
         run: make check-go
 
   web:
+    if: *not-merge-push
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -60,6 +73,7 @@ jobs:
   smoke:
     # The full build (frontend embedded into the Go binary), then the binary
     # is started and checked.
+    if: *not-merge-push
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -88,6 +102,7 @@ jobs:
         run: make smoke
 
   docker:
+    if: *not-merge-push
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
