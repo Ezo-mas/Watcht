@@ -278,6 +278,7 @@ Docker is the primary distribution, since it's what Unraid, TrueNAS, Synology, P
 - Go: `go vet`, `golangci-lint`, `go test ./...`, and a check that `sqlc generate` leaves no diff
 - Web: `svelte-check`, ESLint, `pnpm build`
 - Docker build on every PR (from M0); multi-arch publish on version tags
+- Runs are skipped where they would repeat work: changes only to Markdown, `docs/`, `.claude/`, or `LICENSE`; and the push of a PR's merge commit to `main`, whose merge ref the PR already tested. A new push to a PR cancels its run in progress; runs on `main` always finish.
 
 ## Milestones
 
