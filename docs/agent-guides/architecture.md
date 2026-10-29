@@ -105,6 +105,12 @@ themselves. `catalog` and `tracking` decide what gets stored.
     Anything not under `/api/`, `/healthz`, or a built asset returns the
     SPA's `index.html`, except missing files under `/_app/`, which 404 so
     a stale tab never receives HTML as JavaScript.
+11. **Provider HTTP.** Provider adapters call their API only through
+    `internal/providers`, never `net/http` directly: that's where timeouts,
+    the rate limit, retries, the `provider_cache` table, and the stale
+    fallback live. API keys travel in a header, never in the URL or path.
+    Redirects aren't followed, since they would resend the key to another
+    host. Errors and logs carry no header values, query, or body.
 
 ## Known pitfalls
 

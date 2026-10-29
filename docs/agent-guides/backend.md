@@ -100,9 +100,40 @@ tracking, auth, jobs, or the API shape.
 1. Implement the relevant interface (MetadataProvider, ListProvider,
    SyncSource, or Importer) in its own package under `internal/providers/`
    or `internal/importers/`.
-2. Make HTTP calls through the shared provider client (timeouts, rate
-   limiting, cache).
+2. Make HTTP calls through the shared provider client in `internal/providers`,
+   never `net/http` directly. It gives each attempt a timeout, rate-limits the
+   provider, retries what may pass, and caches responses in `provider_cache`.
+   Build one client per provider in `cmd/watcht`:
+   `providers.New(d, providers.Options{Provider: "tmdb", BaseURL: ..., Header: ..., UserAgent: ...})`,
+   then call `client.GetJSON(ctx, "/movie/603", query, ttl, &out)`. The
+   defaults are 20 requests a second with a burst of 20, and a 15-second
+   timeout per attempt; set `RatePerSecond`, `Burst`, or `Timeout` only when
+   the provider's limits differ.
+   - **Keys go in `Options.Header`, never in the URL or the path.** The query
+     is part of the cache key, so a key there is stored in the database, and
+     URLs end up in proxy and access logs. The client refuses a path with `?`
+     or `#`.
+   - **User input goes in `query`**, which the client encodes. Never put it in
+     the path.
+   - **`ttl` is how long a 200 response is cached.** Pick it from how fast the
+     data changes: the TMDB cache lifetimes in `docs/rewrite-plan.md` (M3) are
+     the model. Use `0` only for data that must be live. It turns caching off
+     for the call, including the stale fallback below.
+   - **Stale fallback:** when the provider is unreachable or returns a 5xx
+     after the retries, an expired cache entry is served with a warning. A 4xx
+     is never covered by it.
+   - **Errors:** a 404 matches `errors.Is(err, providers.ErrNotFound)`. Other
+     failures are a `*providers.StatusError` (status and path) or a transport
+     error. Neither includes the query, headers, or body, so they're safe to
+     log and to show.
+   - Redirects are not followed: the key header would be sent to the new host.
+     A 3xx comes back as a `StatusError`.
+   - Pass a fresh `out` each call. A decode that fails part way can leave it
+     partly filled.
+   - Cache rows are pruned daily by the `provider_cache_prune` job, which is
+     shared by every provider: a new provider adds no job.
 3. Return plain structs; let `catalog` and `tracking` store them.
 4. Record real responses into `testdata/` and test against them. Strip
-   personal data from fixtures before committing.
+   personal data from fixtures before committing. The client's own tests use
+   an `httptest` server on loopback; nothing in the suite reaches the network.
 5. Add attribution if the provider's terms require it.
