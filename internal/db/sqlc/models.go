@@ -32,6 +32,14 @@ type Job struct {
 	LastError   sql.NullString
 }
 
+type ProviderCache struct {
+	Provider  string
+	Key       string
+	Response  string
+	FetchedAt string
+	ExpiresAt string
+}
+
 type Session struct {
 	ID        int64
 	TokenHash []byte

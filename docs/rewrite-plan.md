@@ -351,6 +351,18 @@ Each milestone ends with something runnable and is merged to `main` before the n
   - Detail pages and their API use the TMDB ID (`/movies/603` is TMDB movie 603), so opening a search result fetches and upserts it with no extra step, and URLs survive a reinstall. This is an exception to "user-facing IDs are the internal integers" for catalog items; internal IDs stay internal (joins, watch events).
   - Metadata refresh: an item is refreshed when its metadata is older than its cache lifetime and its detail page was opened in the last 30 days (a `last_viewed_at` column). M4 adds "watched recently" to the same rule.
   - TMDB client: a token bucket at 20 requests a second (TMDB allows about 40), retrying 429s after `Retry-After`. Cache lifetimes: search 1 day; movies and ended shows 7 days; ongoing shows and seasons 1 day; external ID lookups 30 days. Raise them later if needed.
+  - Slice 2 is built, in review: `provider_cache` (migration 00005), the shared client in `internal/providers`, and the daily `provider_cache_prune` job. No provider is constructed in `cmd/watcht` yet; slice 3 adds the first. Decisions made while building it:
+    - A `ttl` of 0 turns the cache off for that call, stale fallback included. Only a 200 with a body that is valid JSON and decodes into the caller's value is stored; another 2xx code is a `StatusError`, not a success. A fresh entry that no longer decodes (the adapter's type changed) is fetched again into a zeroed value, so nothing from the old entry leaks into the result.
+    - Retries are for 429, 502, 503, 504, and transport errors, at most three attempts in all. A 429 waits for `Retry-After` (seconds or an HTTP date), up to 30 seconds; a longer wait, or a number too large to read, fails at once without a retry. Other retries wait 0.5 s, then 1 s. Only a 429 honours `Retry-After`; a 503 with one is retried on the normal schedule.
+    - The stale fallback covers transport errors and 5xx responses after the retries. It never covers a 4xx, including a 429 that ran out of retries.
+    - Redirects are not followed; a 3xx is a `StatusError`. A redirect would send the key header to another host.
+    - The rate limit is one token bucket per client that every attempt takes. A wait the context cuts short gives its token back (waits already handed out to others don't shrink, so the refund is approximate). The bucket always runs on the real clock, not the client's `Now`: an adapter's tests with a fixed `Now` would otherwise never refill it.
+    - A path containing `?` or `#` is refused before any request, since a key pushed into it would be stored or logged.
+    - Error and log text never carries header values, the query, or the body. `encoding/json`'s own messages can quote a number from the body (an overflowing one, for instance), so a decode error names only the field and the Go type.
+    - The cache key is the path, then `?` and `url.Values.Encode()`. Values under one key keep their order in the key and in the request.
+    - The timeout applies to each attempt, body read included. A body over 8 MiB is an error and is never cached in part.
+    - The `provider_cache_prune` job runs daily and at startup, like `jobs_maintenance`. It deletes entries that expired more than 30 days ago, for every provider; an entry exactly 30 days past expiry is kept.
+    - `providers.New` panics on a missing provider name, or on a BaseURL that isn't an absolute http or https URL with no credentials, query, or fragment. Those are wiring bugs, so they fail at startup.
 
 ### M4: Tracking parity
 
