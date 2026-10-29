@@ -23,7 +23,8 @@ UPDATE sessions SET expires_at = sqlc.arg(expires_at) WHERE id = sqlc.arg(id);
 -- name: DeleteSession :exec
 DELETE FROM sessions WHERE token_hash = sqlc.arg(token_hash);
 
--- name: DeleteExpiredSessions :exec
+-- DeleteExpiredSessions returns the number of rows deleted, for logging.
+-- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= sqlc.arg(now);
 
 -- DeleteUserSessions ends every session of a user except keep_id (pass 0

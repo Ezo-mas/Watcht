@@ -16,6 +16,22 @@ type ApiToken struct {
 	CreatedAt string
 }
 
+type Job struct {
+	ID          int64
+	Kind        string
+	Payload     string
+	Status      string
+	UniqueKey   sql.NullString
+	Attempts    int64
+	MaxAttempts int64
+	RunAt       string
+	CreatedAt   string
+	UpdatedAt   string
+	StartedAt   sql.NullString
+	FinishedAt  sql.NullString
+	LastError   sql.NullString
+}
+
 type Session struct {
 	ID        int64
 	TokenHash []byte

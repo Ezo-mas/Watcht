@@ -34,13 +34,17 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (i
 	return id, err
 }
 
-const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
+const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= ?1
 `
 
-func (q *Queries) DeleteExpiredSessions(ctx context.Context, now string) error {
-	_, err := q.db.ExecContext(ctx, deleteExpiredSessions, now)
-	return err
+// DeleteExpiredSessions returns the number of rows deleted, for logging.
+func (q *Queries) DeleteExpiredSessions(ctx context.Context, now string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteExpiredSessions, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteSession = `-- name: DeleteSession :exec

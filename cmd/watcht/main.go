@@ -97,11 +97,12 @@ func serve(stderr io.Writer) int {
 		return 1
 	}
 
+	authService := auth.New(database, auth.Options{Logger: logger})
 	handler, err := httpapi.NewRouter(httpapi.Deps{
 		Logger:         logger,
 		WebUI:          webui.Handler(webui.Dist()),
 		Health:         database.Ping,
-		Auth:           auth.New(database, auth.Options{Logger: logger}),
+		Auth:           authService,
 		BaseOrigin:     cfg.BaseOrigin(),
 		TrustedProxies: cfg.TrustedProxies,
 	})
@@ -110,12 +111,38 @@ func serve(stderr io.Writer) int {
 		_ = database.Close()
 		return 1
 	}
+
+	// Bind the port before starting background jobs: a second server on the
+	// same data (say, a stray `watcht serve` in the container) then fails
+	// here instead of requeueing and rerunning this one's running jobs.
+	ln, err := server.Listen(ctx, cfg.Listen)
+	if err != nil {
+		logger.Error("server stopped", "err", err)
+		_ = database.Close()
+		return 1
+	}
+
+	// Background work shares the server's context, so a signal stops both.
+	jobsCtx, stopJobs := context.WithCancel(ctx)
+	defer stopJobs()
+	queue, err := startJobs(jobsCtx, database, logger, authService)
+	if err != nil {
+		logger.Error("start background jobs", "err", err)
+		_ = ln.Close()
+		_ = database.Close()
+		return 1
+	}
+
 	code := 0
-	if err := server.Run(ctx, cfg.Listen, handler, logger); err != nil {
+	if err := server.Serve(ctx, ln, handler, logger); err != nil {
 		logger.Error("server stopped", "err", err)
 		code = 1
 	}
-	// After the HTTP server has drained, so no request still uses it.
+	// Stop the worker even when the server failed without a signal, and wait
+	// for a running job before closing the database. This happens after the
+	// HTTP server has drained, so no request still uses it.
+	stopJobs()
+	queue.Wait()
 	if err := database.Close(); err != nil {
 		logger.Error("close database", "err", err)
 		code = 1

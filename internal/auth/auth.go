@@ -233,11 +233,8 @@ func (s *Service) Login(ctx context.Context, username, password string) (Session
 			return fmt.Errorf("recheck user %d: %w", u.ID, err)
 		}
 		now := s.now()
-		// Expired sessions are cleaned up here, which is often enough for a
-		// household; a scheduled job can take over once jobs exist (M3).
-		if err := q.DeleteExpiredSessions(ctx, db.Timestamp(now)); err != nil {
-			return fmt.Errorf("delete expired sessions: %w", err)
-		}
+		// Expired sessions are deleted by the hourly job scheduled in M3;
+		// login no longer does it, so it stays fast.
 		sess, err = s.createSession(ctx, q, User{ID: cur.ID, Username: cur.Username, IsAdmin: cur.IsAdmin == 1}, now)
 		return err
 	})
@@ -299,6 +296,16 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		}
 	}
 	return sess, nil
+}
+
+// DeleteExpiredSessions deletes sessions past their expiry and returns how
+// many. The job scheduler runs it hourly; login no longer does it.
+func (s *Service) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	n, err := s.write.DeleteExpiredSessions(ctx, db.Timestamp(s.now()))
+	if err != nil {
+		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return n, nil
 }
 
 // Logout ends the session for token. An unknown token is not an error.

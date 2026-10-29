@@ -58,8 +58,32 @@ themselves. `catalog` and `tracking` decide what gets stored.
 7. **Progress and stats are derived** from `watch_events`, `episodes`, and
    `seasons` by query. There are no progress tables to keep in sync.
 8. **Jobs.** Webhook handlers validate, store the raw event, enqueue a job,
-   and return `202`. Long or retryable work runs in the job worker, never
-   in a request handler.
+   and return `202`; long or retryable work runs in the job worker, never
+   in a request handler. `internal/jobs` owns the `jobs` table. One worker
+   goroutine claims the oldest due queued job with a single
+   `UPDATE ... RETURNING` on the write pool (status `running`, `attempts`
+   + 1, `started_at`), so it can't be claimed twice. Success marks the job
+   `done`. An error puts it back to `queued` with `run_at` = now plus
+   exponential backoff (30 seconds doubling, capped at an hour), or marks
+   it `failed` once `attempts` reaches `max_attempts`; `jobs.Permanent(err)`
+   and an unknown kind fail at once. A panic is recovered and handled as an
+   error, and each run's context has a timeout (5 minutes by default) that
+   the handler must respect. Jobs left
+   `running` by a crash go back to `queued` at startup and that attempt
+   counts, so a job on its last attempt fails instead (a job that kills the
+   process can't crash-loop the server); a job cut short by a clean
+   shutdown goes back without counting. The worker recovers the same way
+   when a run's outcome can't be written. The server binds its port before
+   the queue starts, so a second `serve` on the same data exits first.
+   A scheduled maintenance job prunes done jobs after 7 days and failed
+   ones after 30. `Enqueue` takes an optional `run_at`, `max_attempts`
+   (default 5), and `unique_key`: a partial unique index on `unique_key`
+   over queued and running rows makes a second enqueue a no-op, so periodic
+   jobs and slow runs never pile up across restarts. The scheduler is
+   interval-based, not cron, and enqueues each scheduled kind with its kind
+   as the key. A handler can run more than once (a crash between its work
+   and the `done` update reruns it), so make it idempotent, and never log
+   its payload.
 9. **Auth.** `internal/auth` owns it. Session and API tokens are 32 random
    bytes, stored only as SHA-256 hashes and looked up by hash through a
    unique index (the client can't choose the hash, so lookup timing

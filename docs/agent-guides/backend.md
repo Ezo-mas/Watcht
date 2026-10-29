@@ -68,6 +68,33 @@ tracking, auth, jobs, or the API shape.
    server-wide values.
 5. Add or update the matching TypeScript types in `web/src/lib/api/`.
 
+## Adding a job kind
+
+1. Register a handler in `cmd/watcht` before the queue starts:
+   `q.Register("refresh_movie", func(ctx context.Context, payload json.RawMessage) error { ... })`.
+   A kind is a stable string: renaming one leaves old queued rows without a
+   handler, so they fail as an unknown kind.
+2. Enqueue it from the domain package that owns the work with
+   `q.Enqueue(ctx, kind, payload, jobs.EnqueueOptions{})`. The payload is
+   marshalled as JSON (`nil` stores `{}`); `run_at` defaults to now,
+   `max_attempts` to 5, and a `unique_key` makes a second enqueue a no-op
+   while one is queued or running.
+3. Return `jobs.Permanent(err)` for a failure another attempt can't fix.
+   Any other error retries with backoff until `max_attempts`; a panic is
+   recovered as an error.
+4. For periodic work, call `q.Every(kind, interval)`: it runs at startup and
+   every interval, and uses the kind as its `unique_key`. Intervals, not
+   cron.
+5. The context carries the per-job timeout and is cancelled on shutdown, so
+   the handler must return promptly then. Handlers can run more than once
+   (a crash after the work but before it's marked done reruns them), so make
+   them idempotent, and never log the payload.
+6. A handler's error is logged and stored in `last_error`, so it must not
+   contain a secret or the payload. Provider requests send API keys in a
+   header, never the URL: a `*url.Error` includes the full URL.
+7. Test against a migrated temp database (`dbtest.New`) and drive the
+   queue's clock instead of sleeping.
+
 ## Adding a provider or importer
 
 1. Implement the relevant interface (MetadataProvider, ListProvider,

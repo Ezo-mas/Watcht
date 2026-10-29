@@ -215,7 +215,8 @@ func TestSessionExpiryAndRenewal(t *testing.T) {
 	}
 }
 
-func TestLoginDeletesExpiredSessions(t *testing.T) {
+// Expired sessions are deleted by the scheduled job, not by login.
+func TestLoginKeepsExpiredSessions(t *testing.T) {
 	s, d, clock := newService(t)
 	ctx := context.Background()
 	if _, err := s.Setup(ctx, "admin", "long enough"); err != nil {
@@ -225,13 +226,62 @@ func TestLoginDeletesExpiredSessions(t *testing.T) {
 	if _, err := s.Login(ctx, "admin", "long enough"); err != nil {
 		t.Fatal(err)
 	}
+	if n := countSessions(t, d, ctx); n != 2 {
+		t.Errorf("%d sessions stored, want 2 (login must not delete the expired one)", n)
+	}
+}
+
+func TestDeleteExpiredSessions(t *testing.T) {
+	s, d, clock := newService(t)
+	ctx := context.Background()
+	if _, err := s.Setup(ctx, "admin", "long enough"); err != nil {
+		t.Fatal(err)
+	}
+	// The setup session expires 30 days after t0; this login session an
+	// hour after that.
+	clock.Advance(time.Hour)
+	if _, err := s.Login(ctx, "admin", "long enough"); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := s.DeleteExpiredSessions(ctx); err != nil || n != 0 {
+		t.Fatalf("DeleteExpiredSessions with none expired = %d, %v; want 0", n, err)
+	}
+
+	// Past the setup session's expiry but before the login session's.
+	clock.Advance(DefaultSessionTTL + 30*time.Minute - time.Hour)
+	n, err := s.DeleteExpiredSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("DeleteExpiredSessions = %d, want 1 (only the older session)", n)
+	}
+	if got := countSessions(t, d, ctx); got != 1 {
+		t.Errorf("%d sessions left, want 1", got)
+	}
+
+	// At exactly the remaining session's expiry it is expired too.
+	clock.Advance(30 * time.Minute)
+	n, err = s.DeleteExpiredSessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("DeleteExpiredSessions at the expiry instant = %d, want 1", n)
+	}
+	if got := countSessions(t, d, ctx); got != 0 {
+		t.Errorf("%d sessions left after deleting all, want 0", got)
+	}
+}
+
+func countSessions(t *testing.T, d *db.DB, ctx context.Context) int {
+	t.Helper()
 	var n int
 	if err := d.Read.QueryRowContext(ctx, "SELECT count(*) FROM sessions").Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Errorf("%d sessions stored, want 1 (the expired setup session deleted)", n)
-	}
+	return n
 }
 
 func TestAuthenticateRejects(t *testing.T) {
