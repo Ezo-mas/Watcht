@@ -2,7 +2,6 @@ package catalog
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Ezo-mas/watcht/internal/db/dbtest"
-	"github.com/Ezo-mas/watcht/internal/providers"
 	"github.com/Ezo-mas/watcht/internal/providers/tmdb"
 )
 
@@ -105,14 +103,10 @@ func TestFetchAndSyncAgainstRecordedTMDB(t *testing.T) {
 		t.Errorf("Movie(603) genres = %+v, want %+v", m.Genres, want)
 	}
 
-	// Breaking Bad lists seasons 0 to 5. Only 0 and 1 are recorded, so the
-	// sync stops at season 2 with TMDB's 404.
-	err = s.SyncShow(ctx, 1396)
-	if !errors.Is(err, providers.ErrNotFound) {
-		t.Fatalf("SyncShow(1396) = %v, want an error matching providers.ErrNotFound", err)
-	}
-	if !strings.Contains(err.Error(), "season 2") {
-		t.Errorf("SyncShow error = %q, want it to name season 2", err)
+	// Breaking Bad lists seasons 0 to 5. The unrecorded seasons return 404,
+	// so the sync marks them missing and keeps the recorded seasons.
+	if err := s.SyncShow(ctx, 1396); err != nil {
+		t.Fatal(err)
 	}
 	wantRequests := []string{
 		"/3/movie/603?append_to_response=external_ids",
@@ -120,6 +114,9 @@ func TestFetchAndSyncAgainstRecordedTMDB(t *testing.T) {
 		"/3/tv/1396/season/0",
 		"/3/tv/1396/season/1",
 		"/3/tv/1396/season/2",
+		"/3/tv/1396/season/3",
+		"/3/tv/1396/season/4",
+		"/3/tv/1396/season/5",
 	}
 	if got := fake.requests(); !slices.Equal(got, wantRequests) {
 		t.Errorf("requests = %v, want %v", got, wantRequests)
@@ -135,8 +132,8 @@ func TestFetchAndSyncAgainstRecordedTMDB(t *testing.T) {
 	if want := []Genre{{TMDBID: 80, Name: "Crime"}, {TMDBID: 18, Name: "Drama"}}; !slices.Equal(show.Genres, want) {
 		t.Errorf("Show(1396) genres = %+v, want %+v", show.Genres, want)
 	}
-	if nums := seasonNumbers(show.Seasons); !slices.Equal(nums, []int{0, 1, 2, 3, 4, 5}) {
-		t.Errorf("listed seasons = %v, want 0 to 5", nums)
+	if nums := seasonNumbers(show.Seasons); !slices.Equal(nums, []int{0, 1}) {
+		t.Errorf("listed seasons = %v, want 0 and 1", nums)
 	}
 
 	// Seasons 0 and 1 were fetched: they have their episodes and the overview
@@ -163,7 +160,7 @@ func TestFetchAndSyncAgainstRecordedTMDB(t *testing.T) {
 	if !strings.HasPrefix(show.Seasons[1].Overview, "High school chemistry teacher") {
 		t.Errorf("season 1 overview = %q, want the recorded text", show.Seasons[1].Overview)
 	}
-	// Season 2 was never fetched, so its episode list isn't stored.
+	// Season 2 returned 404, so its episode list is not stored.
 	var stored int
 	if err := d.Read.QueryRowContext(ctx, "SELECT count(*) FROM seasons WHERE season_number = 2 AND episodes_updated_at IS NOT NULL").Scan(&stored); err != nil {
 		t.Fatalf("read season 2: %v", err)

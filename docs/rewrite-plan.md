@@ -382,7 +382,16 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - If TMDB's season list repeats a number, `SeasonEpisodes` reads the season with the lowest TMDB ID (see `docs/TECH_DEBT.md`).
     - A season response has no episode IMDb or TVDB IDs, so storing a season leaves those columns alone instead of clearing them. Nothing fills them yet; M5's import matching needs a source (the episode endpoint returns them).
     - A season's episode count is TMDB's count from the show's season list, not the number of episodes stored. `episodes_updated_at` stays empty until a season's episodes have been stored, which tells "not fetched yet" apart from "no episodes".
-    - For M4: when a whole season goes missing, its episodes aren't marked themselves. Progress and stats queries must also check `seasons.missing_since`.
+    - For M4: when a whole season goes missing, its episodes aren't marked themselves. Progress and stats queries must also check `seasons.missing_since`, and `seasons.not_found_since` (added in 4b).
+  - Slice 4b is built, in review: migration 00007 (`last_viewed_at` on movies and shows, `not_found_since` on seasons), `MarkMovieViewed`/`MarkShowViewed`, the `catalog_sync_show` job that fetches a newly stored show's episodes, and the hourly `catalog_refresh` job, wired in `cmd/watcht` only when `WATCHT_TMDB_API_KEY` is set. Decided by the maintainer (2026-10-31):
+    - A season that TMDB lists but returns 404 for gets a separate `not_found_since` mark and the sync carries on with the other seasons. It's hidden like a missing season, but the show's season list doesn't clear the mark (the list still includes it); only a successful fetch of that season does. A full show sync retries it once per show lifetime.
+    - Refresh calls never use the provider client's stale fallback (`providers.WithoutStale`): during a TMDB outage the run stops and retries with backoff, instead of storing old data as freshly updated. Page loads keep the fallback.
+  - Decisions made while building it:
+    - A show refresh is a full `SyncShow`, so seasons follow their show's lifetime. A viewed show is due when its own metadata or any of its visible seasons (not missing or not found) is older than its lifetime, or a season's episodes were never fetched, so a sync that failed partway is picked up on the next run.
+    - Each run handles at most 50 movies and 10 shows, oldest first, so it fits the 5-minute job timeout at 20 requests a second.
+    - A title TMDB returns 404 for is kept (history may point at it), and its metadata time is moved so it sorts last. A movie is then asked for again after its 7-day lifetime; a show is asked for again on each run once its seasons are past their lifetime, while it's viewed.
+    - Opening a page marks it viewed at most once an hour. The sync job is queued after the show's write commits, with a context that survives the client disconnecting, and a unique key so a second open doesn't queue it twice.
+    - Slice 5's handlers need the catalog service, but the router is built before the job queue starts (the port is bound first). Slice 5 splits building the queue and the catalog from starting the queue.
 
 ### M4: Tracking parity
 

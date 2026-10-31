@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/db/sqlc"
+	"github.com/Ezo-mas/watcht/internal/jobs"
 	"github.com/Ezo-mas/watcht/internal/providers/tmdb"
 )
 
@@ -36,30 +38,46 @@ type Metadata interface {
 	Season(ctx context.Context, showID, seasonNumber int) (tmdb.Season, error)
 }
 
+// Enqueuer is the part of *jobs.Queue that catalog uses.
+type Enqueuer interface {
+	Enqueue(context.Context, string, any, jobs.EnqueueOptions) error
+}
+
 // Options configures a Service.
 type Options struct {
-	// Now is the clock for metadata_updated_at and missing_since. Nil means
+	// Jobs enqueues episode syncs after FetchShow. Nil means no enqueue.
+	Jobs Enqueuer
+	// Logger receives catalog warnings and refresh counts. Nil discards logs.
+	Logger *slog.Logger
+	// Now is the clock for catalog timestamps. Nil means
 	// time.Now.
 	Now func() time.Time
 }
 
 // Service stores and reads the catalog.
 type Service struct {
-	db    *db.DB
-	read  *sqlc.Queries
-	write *sqlc.Queries
-	md    Metadata
-	now   func() time.Time
+	db     *db.DB
+	read   *sqlc.Queries
+	write  *sqlc.Queries
+	md     Metadata
+	now    func() time.Time
+	jobs   Enqueuer
+	logger *slog.Logger
 }
 
 // New returns a Service that stores into d and fetches from md.
 func New(d *db.DB, md Metadata, opts Options) *Service {
 	s := &Service{
-		db:    d,
-		read:  sqlc.New(d.Read),
-		write: sqlc.New(d.Write),
-		md:    md,
-		now:   opts.Now,
+		db:     d,
+		read:   sqlc.New(d.Read),
+		write:  sqlc.New(d.Write),
+		md:     md,
+		now:    opts.Now,
+		jobs:   opts.Jobs,
+		logger: opts.Logger,
+	}
+	if s.logger == nil {
+		s.logger = slog.New(slog.DiscardHandler)
 	}
 	if s.now == nil {
 		s.now = time.Now

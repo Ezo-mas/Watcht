@@ -179,7 +179,8 @@ ON CONFLICT (tmdb_id) DO UPDATE SET
     poster_path = excluded.poster_path,
     air_date = excluded.air_date,
     episodes_updated_at = excluded.episodes_updated_at,
-    missing_since = NULL
+    missing_since = NULL,
+    not_found_since = NULL
 RETURNING id;
 
 -- MarkSeasonsMissing sets missing_since on a show's seasons that aren't in
@@ -277,7 +278,7 @@ ORDER BY genres.name, genres.tmdb_id;
 -- name: ListShowSeasons :many
 SELECT tmdb_id, season_number, name, overview, poster_path, air_date, episode_count
 FROM seasons
-WHERE show_id = sqlc.arg(show_id) AND missing_since IS NULL
+WHERE show_id = sqlc.arg(show_id) AND missing_since IS NULL AND not_found_since IS NULL
 ORDER BY season_number, tmdb_id;
 
 -- GetVisibleSeasonID returns the internal ID of the season a show lists with
@@ -289,7 +290,7 @@ FROM seasons
 JOIN shows ON shows.id = seasons.show_id
 WHERE shows.tmdb_id = sqlc.arg(show_tmdb_id)
     AND seasons.season_number = sqlc.arg(season_number)
-    AND seasons.missing_since IS NULL
+    AND seasons.missing_since IS NULL AND seasons.not_found_since IS NULL
 ORDER BY seasons.tmdb_id
 LIMIT 1;
 
