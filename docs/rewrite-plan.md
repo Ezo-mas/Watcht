@@ -339,7 +339,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - TMDB attribution in the footer and About page; optional image cache.
 - Job worker and scheduler, with a metadata refresh job, and a job that deletes expired sessions (moved from login, where M2 left it).
 - **Done when:** you can search for a title and open its detail page.
-- **Status: in progress**, in slices: (1) the `jobs` table, worker, and scheduler, with expired-session cleanup moved into a job; (2) the `provider_cache` table and the shared provider HTTP client; (3) the TMDB adapter, tested against fixtures; (4) the catalog tables and upserts, and the metadata refresh job; (5) search and detail endpoints; (6) the SPA's search and detail pages and the TMDB attribution. The optional image cache is a later slice or moves to M6.
+- **Status: in progress**, in slices: (1) the `jobs` table, worker, and scheduler, with expired-session cleanup moved into a job; (2) the `provider_cache` table and the shared provider HTTP client; (3) the TMDB adapter, tested against fixtures; (4) the catalog tables and upserts, and the metadata refresh job (split into 4a and 4b below); (5) search and detail endpoints; (6) the SPA's search and detail pages and the TMDB attribution. The optional image cache is a later slice or moves to M6.
   - Slice 1 is built, in review: `jobs` (migration 00004), `internal/jobs` with one worker and an interval scheduler, retention, crash recovery, and the hourly `session_cleanup` job, which login no longer does. Decisions made while building it:
     - The `jobs_maintenance` job that prunes finished jobs is internal to `internal/jobs` and scheduled daily; it keeps done jobs 7 days and failed ones 30, and like every scheduled job also runs at startup.
     - A job left `running` by a crash counts as an attempt when startup puts it back in the queue, and fails instead if that was its last attempt, so a job that kills the process can't crash-loop the server. One cut short by a clean shutdown does not count; the claim and that requeue use a context detached from the cancelled one, so shutdown can't leave a row `running`. If a run's outcome can't be written, the worker recovers the row the same way before its next claim.
@@ -370,6 +370,11 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - A season's episodes take their show ID and season number from the request, not the response. A show counts as ended when its status is `Ended` or `Canceled`.
     - Arguments are checked before any request: IDs above 0, season 0 or more (0 is specials), episode 1 or more, page 1–500 (below 1 means 1), a non-empty trimmed query, and an IMDb ID matching `tt` plus 7–10 digits, since it goes into the path. A failure is `tmdb.ErrInvalidArgument` and never echoes the value.
     - Dates are `YYYY-MM-DD` strings, empty when TMDB has none or sends an invalid one. Image fields keep TMDB's paths, not full URLs.
+  - Slice 4 is split in two: (4a) the catalog tables, the upserts, and syncing a whole show; (4b) the job that fetches a new show's episodes, `last_viewed_at`, and the metadata refresh job. Decided by the maintainer (2026-10-31):
+    - Opening a show stores the show and its season list from one request. A background job (4b) then fetches every season's episodes, so the page doesn't wait on a request per season.
+    - An episode or season that TMDB stops listing is kept, since watch history points at it, and gets a `missing_since` time. It's hidden from season lists and progress, and comes back if TMDB lists it again.
+    - Only `tmdb_id` is unique. `imdb_id` and `tvdb_id` get plain indexes, because TMDB sometimes has two entries with the same IMDb or TVDB ID, and that mustn't stop a title from being stored. Imports (M5) send more than one match to review. `trakt_id` arrives with M5.
+    - Genres are a `genres` table (TMDB genre ID and name) with `movie_genres` and `show_genres` join tables.
 
 ### M4: Tracking parity
 
