@@ -136,4 +136,6 @@ tracking, auth, jobs, or the API shape.
 4. Record real responses into `testdata/` and test against them. Strip
    personal data from fixtures before committing. The client's own tests use
    an `httptest` server on loopback; nothing in the suite reaches the network.
+   List each fixture's request in a `testdata/README.md`, along with how it was
+   trimmed (see `internal/providers/tmdb/testdata/README.md`).
 5. Add attribution if the provider's terms require it.

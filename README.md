@@ -72,7 +72,7 @@ services:
     volumes:
       - ./data:/data
     environment:
-      TMDB_API_KEY: your-tmdb-key
+      WATCHT_TMDB_API_KEY: your-tmdb-read-access-token
     restart: unless-stopped
 ```
 
@@ -82,7 +82,7 @@ Release binaries for Linux, macOS, and Windows will also be available for runnin
 
 All state lives in the data volume. You can take a backup at any time, even while watcht is running, with `docker compose exec watcht watcht backup`. watcht writes consistent database snapshots to `/data/backups/` daily; back up that folder rather than copying the live database file.
 
-You'll need your own free TMDB API key; see TMDB's [API getting started guide](https://developer.themoviedb.org/docs/getting-started).
+You'll need your own free TMDB account and its API Read Access Token (the long token on TMDB's API settings page, not the shorter API key); see TMDB's [API getting started guide](https://developer.themoviedb.org/docs/getting-started).
 
 ## Legacy prototype
 

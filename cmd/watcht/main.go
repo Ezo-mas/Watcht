@@ -86,6 +86,9 @@ func serve(stderr io.Writer) int {
 	}()
 
 	logger.Info("starting watcht", "version", version, "data_dir", cfg.DataDir)
+	if cfg.TMDBToken == "" {
+		logger.Info("TMDB is not configured; set WATCHT_TMDB_API_KEY")
+	}
 	if len(cfg.TrustedProxies) > 0 && (cfg.BaseURL == nil || cfg.BaseURL.Scheme != "https") {
 		// Behind a TLS-terminating proxy, the scheme is only known from its
 		// X-Forwarded-Proto header; if it doesn't send one, cookies lose Secure.

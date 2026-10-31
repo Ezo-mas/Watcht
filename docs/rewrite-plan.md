@@ -254,7 +254,7 @@ Docker is the primary distribution, since it's what Unraid, TrueNAS, Synology, P
 - **Health check:** distroless has no shell or `curl`, so the binary provides a `watcht healthcheck` subcommand that calls `/healthz` and exits non-zero on failure. The Dockerfile's `HEALTHCHECK` runs it.
 - **File permissions:** the image runs as distroless's `nonroot` user (UID 65532) by default. Users who mount a host directory set `user: "1000:1000"` (or their own UID/GID) in compose so the data volume stays writable. linuxserver-style `PUID`/`PGID` are not supported, because they need a shell and an entrypoint script.
 - Multi-arch images (`linux/amd64`, `linux/arm64`) published to GHCR from CI on tags.
-- `docker-compose.yml`: one service, one `./data:/data` volume, `user:` set, `TMDB_API_KEY` env var, port 8080.
+- `docker-compose.yml`: one service, one `./data:/data` volume, `user:` set, `WATCHT_TMDB_API_KEY` env var, port 8080.
 - A sample systemd unit for running the release binary without Docker.
 - Deferred until someone asks: Kubernetes/Helm, Nix, AUR, and Unraid/TrueNAS community templates.
 - **Backups:** don't copy the database file while watcht is running, since WAL mode can leave it inconsistent. watcht writes a consistent snapshot with `VACUUM INTO` to `/data/backups/` daily (keeping the last N) and before every migration, and `watcht backup` does the same on demand.
@@ -267,7 +267,7 @@ Docker is the primary distribution, since it's what Unraid, TrueNAS, Synology, P
 | `WATCHT_DATA_DIR` | `/data` | Database, backups, uploads |
 | `WATCHT_LISTEN` | `:8080` | Listen address |
 | `WATCHT_BASE_URL` | | Public URL (`scheme://host[:port]`, no path). Trusted by the cross-origin check, so set it when a proxy rewrites `Host`; `https` makes the session cookie `Secure`. Needed for OIDC later |
-| `TMDB_API_KEY` | | Required |
+| `WATCHT_TMDB_API_KEY` | | TMDB's API Read Access Token (the v4 token, sent as a Bearer header). The server starts without it, but search and metadata need it |
 | `MDBLIST_API_KEY` | | Optional |
 | `WATCHT_TRUSTED_PROXIES` | | Comma-separated IPs or CIDRs of reverse proxies. Only their `X-Forwarded-For` (client IP for the login limit) and `X-Forwarded-Proto` (`Secure` cookies) are believed |
 | `WATCHT_IMAGE_CACHE` | `false` | Proxy and cache TMDB images locally |
@@ -363,6 +363,13 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - The timeout applies to each attempt, body read included. A body over 8 MiB is an error and is never cached in part.
     - The `provider_cache_prune` job runs daily and at startup, like `jobs_maintenance`. It deletes entries that expired more than 30 days ago, for every provider; an entry exactly 30 days past expiry is kept.
     - `providers.New` panics on a missing provider name, or on a BaseURL that isn't an absolute http or https URL with no credentials, query, or fragment. Those are wiring bugs, so they fail at startup.
+  - Slice 3 is built, in review: `internal/providers/tmdb` (search, movie, show, season, episode, and IMDb/TVDB lookups through the shared client), `WATCHT_TMDB_API_KEY` in config, and recorded fixtures in its `testdata/`. Nothing constructs the adapter yet; slice 5's endpoints are the first user, and startup logs one line when the token is missing. Decisions made while building it:
+    - Search uses TMDB's multi search, so one request returns movies and shows together; people are dropped, so a page can hold fewer than 20 results. `include_adult=false`.
+    - The token is TMDB's v4 API Read Access Token, sent as `Authorization: Bearer`.
+    - Every show is cached for 1 day: the cache lifetime is chosen before the response says whether the show has ended. The 7-day lifetime for ended shows is applied by slice 4's refresh rule, from stored data.
+    - A season's episodes take their show ID and season number from the request, not the response. A show counts as ended when its status is `Ended` or `Canceled`.
+    - Arguments are checked before any request: IDs above 0, season 0 or more (0 is specials), episode 1 or more, page 1–500 (below 1 means 1), a non-empty trimmed query, and an IMDb ID matching `tt` plus 7–10 digits, since it goes into the path. A failure is `tmdb.ErrInvalidArgument` and never echoes the value.
+    - Dates are `YYYY-MM-DD` strings, empty when TMDB has none or sends an invalid one. Image fields keep TMDB's paths, not full URLs.
 
 ### M4: Tracking parity
 
@@ -387,6 +394,7 @@ Brought forward so the maintainer's real history is in watcht before v0.1, which
 - Compose file, multi-arch images published to GHCR, release binaries, sample systemd unit.
 - Daily backup job with retention.
 - Self-hosting docs: install, file permissions, reverse proxy, backups, upgrading.
+- GitHub repo page: publish `v0.1.0` as a GitHub release (notes, binaries, image tags), add a social preview image, and set the homepage link once there's a docs site or demo to point to. The description and topics are already set (2026-10-29).
 - **Done when:** `docker compose up` on a clean machine gives a working instance. Tag `v0.1.0`; the migration policy switches to forward-only.
 
 ### M7: Jellyfin

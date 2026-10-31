@@ -184,6 +184,35 @@ func TestLoadTrustedProxies(t *testing.T) {
 	}
 }
 
+func TestLoadTMDBToken(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "unset is allowed", env: map[string]string{}},
+		{name: "empty is allowed", env: map[string]string{"WATCHT_TMDB_API_KEY": ""}},
+		{name: "only spaces is empty", env: map[string]string{"WATCHT_TMDB_API_KEY": " \t "}},
+		{name: "token", env: map[string]string{"WATCHT_TMDB_API_KEY": "test-read-token"}, want: "test-read-token"},
+		{name: "surrounding space is trimmed", env: map[string]string{"WATCHT_TMDB_API_KEY": "  test-read-token\n"}, want: "test-read-token"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookup := func(k string) (string, bool) {
+				v, ok := tt.env[k]
+				return v, ok
+			}
+			cfg, err := load(lookup)
+			if err != nil {
+				t.Fatalf("load() error = %v", err)
+			}
+			if cfg.TMDBToken != tt.want {
+				t.Errorf("TMDBToken = %q, want %q", cfg.TMDBToken, tt.want)
+			}
+		})
+	}
+}
+
 func TestBaseOrigin(t *testing.T) {
 	tests := []struct {
 		name    string
