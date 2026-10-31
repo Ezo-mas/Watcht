@@ -195,7 +195,7 @@ FROM seasons
 JOIN shows ON shows.id = seasons.show_id
 WHERE shows.tmdb_id = ?1
     AND seasons.season_number = ?2
-    AND seasons.missing_since IS NULL
+    AND seasons.missing_since IS NULL AND seasons.not_found_since IS NULL
 ORDER BY seasons.tmdb_id
 LIMIT 1
 `
@@ -353,7 +353,7 @@ func (q *Queries) ListShowGenres(ctx context.Context, showID int64) ([]ListShowG
 const listShowSeasons = `-- name: ListShowSeasons :many
 SELECT tmdb_id, season_number, name, overview, poster_path, air_date, episode_count
 FROM seasons
-WHERE show_id = ?1 AND missing_since IS NULL
+WHERE show_id = ?1 AND missing_since IS NULL AND not_found_since IS NULL
 ORDER BY season_number, tmdb_id
 `
 
@@ -651,7 +651,8 @@ ON CONFLICT (tmdb_id) DO UPDATE SET
     poster_path = excluded.poster_path,
     air_date = excluded.air_date,
     episodes_updated_at = excluded.episodes_updated_at,
-    missing_since = NULL
+    missing_since = NULL,
+    not_found_since = NULL
 RETURNING id
 `
 

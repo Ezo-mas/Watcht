@@ -11,6 +11,9 @@
 // API keys go in Options.Header, never in the URL: a key in the query would
 // be stored in provider_cache as part of the cache key, and proxies and
 // access logs record URLs.
+//
+// Callers storing refreshed metadata should use WithoutStale to prevent an
+// expired cached response from being treated as fresh during an outage.
 package providers
 
 import (

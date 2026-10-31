@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/Ezo-mas/watcht/internal/auth"
+	"github.com/Ezo-mas/watcht/internal/catalog"
 	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/jobs"
 	"github.com/Ezo-mas/watcht/internal/providers"
+	"github.com/Ezo-mas/watcht/internal/providers/tmdb"
 )
 
 const (
@@ -28,9 +30,20 @@ const (
 
 // startJobs registers the job handlers and schedules, then starts recovery,
 // the worker, and the scheduler. They stop when ctx is cancelled; call Wait
-// before closing the database.
-func startJobs(ctx context.Context, d *db.DB, logger *slog.Logger, authService *auth.Service) (*jobs.Queue, error) {
+// before closing the database. With a token, it also builds and returns the
+// catalog service and registers its sync and hourly refresh jobs.
+func startJobs(ctx context.Context, d *db.DB, logger *slog.Logger, authService *auth.Service, token string) (*jobs.Queue, *catalog.Service, error) {
 	q := jobs.New(d, jobs.Options{Logger: logger})
+	var catalogService *catalog.Service
+	if token != "" {
+		client := tmdb.New(d, tmdb.Options{Token: token, UserAgent: "watcht/" + version, Logger: logger})
+		catalogService = catalog.New(d, client, catalog.Options{Jobs: q, Logger: logger})
+		q.Register(catalog.JobSyncShow, catalogService.HandleSyncShow)
+		q.Register(catalog.JobRefresh, func(ctx context.Context, _ json.RawMessage) error { return catalogService.Refresh(ctx) })
+		q.Every(catalog.JobRefresh, time.Hour)
+	}
+	// Without a token, old catalog jobs fail once as unknown kinds. Refresh
+	// catches up when the token is configured again.
 	q.Register(jobSessionCleanup, func(ctx context.Context, _ json.RawMessage) error {
 		n, err := authService.DeleteExpiredSessions(ctx)
 		if err != nil {
@@ -54,7 +67,7 @@ func startJobs(ctx context.Context, d *db.DB, logger *slog.Logger, authService *
 	})
 	q.Every(jobProviderCachePrune, providerCachePruneInterval)
 	if err := q.Start(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return q, nil
+	return q, catalogService, nil
 }

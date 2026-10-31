@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The CHECK constraints in migration 00006 are the last line of defence for
+// The CHECK constraints in migrations 00006 and 00007 are the last line of defence for
 // the values the catalog stores. These tests send bad values straight to the
 // database, since the catalog never sends them.
 func TestSchemaRejectsBadValues(t *testing.T) {
@@ -22,6 +22,7 @@ func TestSchemaRejectsBadValues(t *testing.T) {
 		{"negative season number", "UPDATE seasons SET season_number = ? WHERE tmdb_id = 3572", -1},
 		{"negative episode number", "UPDATE episodes SET episode_number = ? WHERE tmdb_id = 101", -1},
 		{"timestamp without the Z layout", "UPDATE seasons SET created_at = ? WHERE tmdb_id = 3572", "2026-10-31 12:00:00"},
+		{"not_found_since that isn't a timestamp", "UPDATE seasons SET not_found_since = ? WHERE tmdb_id = 3572", "yesterday"},
 		{"missing_since that isn't a timestamp", "UPDATE episodes SET missing_since = ? WHERE tmdb_id = 101", "yesterday"},
 		{"genre TMDB ID of 0", "UPDATE genres SET tmdb_id = ? WHERE tmdb_id = 28", 0},
 		{"movie TMDB ID of 0", "UPDATE movies SET tmdb_id = ? WHERE tmdb_id = 603", 0},

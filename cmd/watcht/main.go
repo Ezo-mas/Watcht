@@ -128,7 +128,8 @@ func serve(stderr io.Writer) int {
 	// Background work shares the server's context, so a signal stops both.
 	jobsCtx, stopJobs := context.WithCancel(ctx)
 	defer stopJobs()
-	queue, err := startJobs(jobsCtx, database, logger, authService)
+	// Slice 5's handlers will take the returned catalog service.
+	queue, _, err := startJobs(jobsCtx, database, logger, authService, cfg.TMDBToken)
 	if err != nil {
 		logger.Error("start background jobs", "err", err)
 		_ = ln.Close()

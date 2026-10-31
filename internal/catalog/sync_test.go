@@ -3,7 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
-	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -58,12 +58,13 @@ func TestSyncShowStopsAtFailedSeason(t *testing.T) {
 	e.md.shows[1396] = show
 	e.md.seasons[seasonKey{1396, 0}] = testSeason(3577, 0, testEpisode(61, 1))
 	e.md.seasons[seasonKey{1396, 1}] = testSeason(3572, 1, testEpisode(101, 1), testEpisode(102, 2))
-	e.md.seasonErr[seasonKey{1396, 2}] = fmt.Errorf("season 2 of show 1396: %w", providers.ErrNotFound)
+	e.md.seasonErr[seasonKey{1396, 2}] = &providers.StatusError{StatusCode: http.StatusInternalServerError}
 	e.md.seasons[seasonKey{1396, 3}] = testSeason(3575, 3, testEpisode(301, 1))
 
 	err := e.s.SyncShow(ctx, 1396)
-	if !errors.Is(err, providers.ErrNotFound) {
-		t.Fatalf("SyncShow error = %v, want it to match providers.ErrNotFound", err)
+	var status *providers.StatusError
+	if !errors.As(err, &status) || status.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("SyncShow error = %v", err)
 	}
 	if !strings.Contains(err.Error(), "season 2") {
 		t.Errorf("SyncShow error = %q, want it to name season 2", err)

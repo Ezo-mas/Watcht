@@ -863,3 +863,38 @@ func TestSleepCtxReturnsWhenCancelled(t *testing.T) {
 		t.Errorf("sleepCtx(1ms) = %v, want nil", err)
 	}
 }
+
+func TestWithoutStale(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		for _, disabled := range []bool{false, true} {
+			t.Run(map[bool]string{false: "fresh", true: "expired"}[expired]+"/"+map[bool]string{false: "fallback", true: "without stale"}[disabled], func(t *testing.T) {
+				script := okScript("cached")
+				e := newEnv(t, script, nil)
+				if _, err := e.get("/movie/603", nil, time.Hour); err != nil {
+					t.Fatal(err)
+				}
+				if expired {
+					e.clock.Advance(2 * time.Hour)
+				}
+				script.set(reply{status: http.StatusInternalServerError})
+				ctx := context.Background()
+				if disabled {
+					ctx = WithoutStale(ctx)
+				}
+				var out payload
+				err := e.client.GetJSON(ctx, "/movie/603", nil, time.Hour, &out)
+				if expired && disabled {
+					var status *StatusError
+					if !errors.As(err, &status) || status.StatusCode != http.StatusInternalServerError {
+						t.Fatalf("error: %v", err)
+					}
+				} else if err != nil || out.Name != "cached" {
+					t.Fatalf("cached: %v %v", out, err)
+				}
+				if !expired && script.count() != 0 {
+					t.Fatal("fresh cache bypassed")
+				}
+			})
+		}
+	}
+}
