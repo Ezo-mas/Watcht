@@ -16,6 +16,32 @@ type ApiToken struct {
 	CreatedAt string
 }
 
+type Episode struct {
+	ID                int64
+	ShowID            int64
+	SeasonID          int64
+	TmdbID            int64
+	SeasonNumber      int64
+	EpisodeNumber     int64
+	Name              string
+	Overview          string
+	StillPath         string
+	AirDate           sql.NullString
+	Runtime           sql.NullInt64
+	VoteAverage       float64
+	ImdbID            sql.NullString
+	TvdbID            sql.NullInt64
+	MissingSince      sql.NullString
+	CreatedAt         string
+	MetadataUpdatedAt string
+}
+
+type Genre struct {
+	ID     int64
+	TmdbID int64
+	Name   string
+}
+
 type Job struct {
 	ID          int64
 	Kind        string
@@ -32,6 +58,31 @@ type Job struct {
 	LastError   sql.NullString
 }
 
+type Movie struct {
+	ID                int64
+	TmdbID            int64
+	ImdbID            sql.NullString
+	Title             string
+	OriginalTitle     string
+	OriginalLanguage  string
+	Overview          string
+	Tagline           string
+	Status            string
+	PosterPath        string
+	BackdropPath      string
+	ReleaseDate       sql.NullString
+	Runtime           sql.NullInt64
+	VoteAverage       float64
+	VoteCount         int64
+	CreatedAt         string
+	MetadataUpdatedAt string
+}
+
+type MovieGenre struct {
+	MovieID int64
+	GenreID int64
+}
+
 type ProviderCache struct {
 	Provider  string
 	Key       string
@@ -40,12 +91,54 @@ type ProviderCache struct {
 	ExpiresAt string
 }
 
+type Season struct {
+	ID                int64
+	ShowID            int64
+	TmdbID            int64
+	SeasonNumber      int64
+	Name              string
+	Overview          string
+	PosterPath        string
+	AirDate           sql.NullString
+	EpisodeCount      int64
+	MissingSince      sql.NullString
+	EpisodesUpdatedAt sql.NullString
+	CreatedAt         string
+}
+
 type Session struct {
 	ID        int64
 	TokenHash []byte
 	UserID    int64
 	CreatedAt string
 	ExpiresAt string
+}
+
+type Show struct {
+	ID                int64
+	TmdbID            int64
+	ImdbID            sql.NullString
+	TvdbID            sql.NullInt64
+	Name              string
+	OriginalName      string
+	OriginalLanguage  string
+	Overview          string
+	Tagline           string
+	Status            string
+	PosterPath        string
+	BackdropPath      string
+	FirstAirDate      sql.NullString
+	LastAirDate       sql.NullString
+	InProduction      int64
+	VoteAverage       float64
+	VoteCount         int64
+	CreatedAt         string
+	MetadataUpdatedAt string
+}
+
+type ShowGenre struct {
+	ShowID  int64
+	GenreID int64
 }
 
 type User struct {

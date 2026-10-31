@@ -101,6 +101,9 @@ imports go through the `jobs` table and a background worker.
 - **`milestone` skill** (`.claude/skills/milestone/`): the routine for
   working any milestone or slice of one. Use it whenever the work belongs
   to a milestone in the plan.
+- **`record-fixture` skill** (`.claude/skills/record-fixture/`): record,
+  trim, and anonymize provider responses into `testdata/`, before a builder
+  starts on provider or importer work.
 - **`watcht-builder`**: well-scoped implementation pieces with a clear brief.
 - **`watcht-designer`**: UI layout, styling, and visual checks in `web/`.
 - **`watcht-reviewer`**: independent review before reporting a milestone
