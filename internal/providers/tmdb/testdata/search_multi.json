@@ -1,0 +1,117 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "backdrop_path": "/tlm8UkiQsitc8rSuIAscQDCnP8d.jpg",
+      "id": 603,
+      "title": "The Matrix",
+      "original_title": "The Matrix",
+      "overview": "Set in the 22nd century, The Matrix tells the story of a computer hacker who joins a group of underground insurgents fighting the vast and powerful computers who now rule the earth.",
+      "poster_path": "/dXNAPwY7VrqMAo51EKhhCJfaGb5.jpg",
+      "media_type": "movie",
+      "original_language": "en",
+      "genre_ids": [
+        28,
+        878
+      ],
+      "popularity": 44.8709,
+      "release_date": "1999-03-31",
+      "softcore": false,
+      "video": false,
+      "vote_average": 8.3,
+      "vote_count": 29114
+    },
+    {
+      "adult": false,
+      "backdrop_path": "/Ams57f2bNSwWsoQWCfD5u3xQjgS.jpg",
+      "id": 711,
+      "name": "Threat Matrix",
+      "original_name": "Threat Matrix",
+      "overview": "Against the rising threat, the Homeland Security Agency has created a highly specialized, elite task force trained and equipped to counter anyone or anything that threatens our nation. The head of this super-secret team is Special Agent John Kilmer. He reports only to the President and has authority to call upon the technical skills, firepower and the specialist agents of the FBI, CIA and NSA.",
+      "poster_path": "/xOeA42Rc9EiIe0dGnwywLqYKetG.jpg",
+      "media_type": "tv",
+      "original_language": "en",
+      "genre_ids": [
+        18,
+        10759
+      ],
+      "popularity": 9.6535,
+      "first_air_date": "2003-09-18",
+      "softcore": false,
+      "vote_average": 6.2,
+      "vote_count": 6,
+      "origin_country": [
+        "US"
+      ]
+    },
+    {
+      "adult": false,
+      "backdrop_path": "/ihOJcrorpDQtHTzIOrobbOhpJsj.jpg",
+      "id": 604,
+      "title": "The Matrix Reloaded",
+      "original_title": "The Matrix Reloaded",
+      "overview": "The Resistance builds in numbers as humans are freed from the Matrix and brought to the city of Zion. Neo discovers his superpowers, including the ability to see the code inside the Matrix. With machine sentinels digging to Zion in 72 hours, Neo, Morpheus and Trinity must find the Keymaker to ultimately reach the Source.",
+      "poster_path": "/8xEVAe84zlL9rkfYT6dZXero4KK.jpg",
+      "media_type": "movie",
+      "original_language": "en",
+      "genre_ids": [
+        28,
+        53,
+        878
+      ],
+      "popularity": 18.4011,
+      "release_date": "2003-05-15",
+      "softcore": false,
+      "video": false,
+      "vote_average": 7.086,
+      "vote_count": 12485
+    },
+    {
+      "adult": false,
+      "backdrop_path": "/eNI7PtK6DEYgZmHWP9gQNuff8pv.jpg",
+      "id": 624860,
+      "title": "The Matrix Resurrections",
+      "original_title": "The Matrix Resurrections",
+      "overview": "Plagued by strange memories, Neo's life takes an unexpected turn when he finds himself back inside the Matrix.",
+      "poster_path": "/8c4a8kE7PizaGQQnditMmI1xbRp.jpg",
+      "media_type": "movie",
+      "original_language": "en",
+      "genre_ids": [
+        878,
+        28,
+        12
+      ],
+      "popularity": 54.4395,
+      "release_date": "2021-12-16",
+      "softcore": false,
+      "video": false,
+      "vote_average": 6.295,
+      "vote_count": 6829
+    },
+    {
+      "adult": false,
+      "backdrop_path": "/bEVjkVlOGlXwD02Q3ybnAvDNxPV.jpg",
+      "id": 11393,
+      "name": "Matrix",
+      "original_name": "Matrix",
+      "overview": "A murdered hitman is given a second chance at redemption by returning to Earth as a reluctant guardian, tasked with protecting people in danger while struggling against the darkness of his former life.",
+      "poster_path": "/2gBnvu6OEMq7Po2qMXd4JiAA4ZD.jpg",
+      "media_type": "tv",
+      "original_language": "en",
+      "genre_ids": [
+        18
+      ],
+      "popularity": 5.0483,
+      "first_air_date": "1993-03-01",
+      "softcore": false,
+      "vote_average": 6.8,
+      "vote_count": 4,
+      "origin_country": [
+        "CA"
+      ]
+    }
+  ],
+  "total_pages": 7,
+  "total_results": 126
+}
