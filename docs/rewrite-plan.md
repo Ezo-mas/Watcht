@@ -6,7 +6,7 @@ This is the plan for rewriting watcht from Next.js + PostgreSQL into a self-host
 
 - **Agents write the code; the maintainer reviews it.** Changes arrive as reviewable pull requests, one milestone (or a slice of one) at a time. Code should be easy to review: small packages, plain SQL, the standard library over frameworks, and tests that show the behaviour.
 - **Agent instructions live in the repo:** `AGENTS.md` at the root, detailed guides in `docs/agent-guides/`, Claude Code settings, hooks, agents (builder, designer, reviewer), and the `milestone` skill in `.claude/`, and serious deferred issues in `docs/TECH_DEBT.md`. These are kept up to date as part of each milestone, not afterwards.
-- **Skills still to write:** `record-fixture` (with M3: record, trim, and anonymize a provider response) and `trakt-import-verify` (with M5: compare an import against Trakt's own counts). They're written when the code they describe exists.
+- **Skills still to write:** `trakt-import-verify` (with M5: compare an import against Trakt's own counts). It's written when the code it describes exists. `record-fixture` was written with M3.
 - **License:** AGPL-3.0. Anyone running a modified watcht as a network service must share their changes.
 
 ## Goals
