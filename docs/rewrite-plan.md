@@ -387,6 +387,7 @@ Brought forward so the maintainer's real history is in watcht before v0.1, which
 - Compose file, multi-arch images published to GHCR, release binaries, sample systemd unit.
 - Daily backup job with retention.
 - Self-hosting docs: install, file permissions, reverse proxy, backups, upgrading.
+- GitHub repo page: publish `v0.1.0` as a GitHub release (notes, binaries, image tags), add a social preview image, and set the homepage link once there's a docs site or demo to point to. The description and topics are already set (2026-10-29).
 - **Done when:** `docker compose up` on a clean machine gives a working instance. Tag `v0.1.0`; the migration policy switches to forward-only.
 
 ### M7: Jellyfin
