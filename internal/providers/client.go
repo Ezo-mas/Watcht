@@ -15,6 +15,15 @@ import (
 	"time"
 )
 
+type withoutStaleKey struct{}
+
+// WithoutStale disables expired-cache fallback for calls made with the returned
+// context. Fresh cache entries are still used. Background metadata writes use
+// this so an outage cannot make old data appear freshly fetched.
+func WithoutStale(ctx context.Context) context.Context {
+	return context.WithValue(ctx, withoutStaleKey{}, true)
+}
+
 // GetJSON fetches BaseURL+path with query and decodes the JSON body into out,
 // which should be a fresh value. ttl is how long a 200 response is cached;
 // zero turns the cache off for the call (no read, no write, and no stale
@@ -23,7 +32,8 @@ import (
 // The cache key is the path followed by the query, encoded with its keys
 // sorted, so it reads well in the sqlite3 CLI. A fresh entry is served with
 // no request. When the request fails after its retries (a transport error or
-// a 5xx), an expired entry is served instead, with a warning.
+// a 5xx), an expired entry is served instead, with a warning, unless ctx was
+// wrapped with WithoutStale.
 //
 // Errors: a 404 matches ErrNotFound, and other failures are a *StatusError or
 // a transport error. None of them include the query, headers, or body.
@@ -63,7 +73,7 @@ func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, ttl
 
 	body, err := c.fetch(ctx, path, key)
 	if err != nil {
-		if stale != nil && staleOK(err) {
+		if stale != nil && staleOK(err) && ctx.Value(withoutStaleKey{}) != true {
 			c.logger.Warn("provider unavailable; serving a cached response past its expiry", "provider", c.provider, "path", path, "err", err)
 			if err := json.Unmarshal(stale.body, out); err != nil {
 				return c.decodeError(path, err)

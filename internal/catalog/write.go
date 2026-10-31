@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/db/sqlc"
+	"github.com/Ezo-mas/watcht/internal/jobs"
+	"github.com/Ezo-mas/watcht/internal/providers"
 	"github.com/Ezo-mas/watcht/internal/providers/tmdb"
 )
 
@@ -24,7 +27,23 @@ func (s *Service) FetchMovie(ctx context.Context, tmdbID int) error {
 // seasons' episodes are stored by SyncShow.
 func (s *Service) FetchShow(ctx context.Context, tmdbID int) error {
 	_, err := s.fetchShow(ctx, tmdbID)
-	return err
+	if err != nil {
+		return err
+	}
+	// Enqueue only after UpsertShow committed: the queue uses the same write connection.
+	if s.jobs != nil {
+		enqueueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		needed, err := s.read.ShowNeedsEpisodes(enqueueCtx, int64(tmdbID))
+		if err == nil && needed {
+			err = s.jobs.Enqueue(enqueueCtx, JobSyncShow, syncShowPayload{TMDBID: tmdbID},
+				jobs.EnqueueOptions{UniqueKey: fmt.Sprintf("catalog_sync_show:%d", tmdbID)})
+		}
+		if err != nil {
+			s.logger.Warn("enqueue show sync", "tmdb_id", tmdbID, "err", err)
+		}
+	}
+	return nil
 }
 
 // fetchShow is FetchShow, returning the response so SyncShow can read its
@@ -41,16 +60,28 @@ func (s *Service) fetchShow(ctx context.Context, tmdbID int) (tmdb.Show, error) 
 }
 
 // SyncShow fetches a show, then each season it lists (season 0 included), and
-// stores them. Each season is one transaction. If a season fails, SyncShow
-// stops with that error, and the seasons stored before it stay stored. A TMDB
-// 404 still matches providers.ErrNotFound.
+// stores them. Each season is one transaction. A season 404 marks it not found
+// and carries on; other errors stop the sync, keeping earlier seasons stored.
+// A show 404 still matches providers.ErrNotFound.
 func (s *Service) SyncShow(ctx context.Context, tmdbID int) error {
 	show, err := s.fetchShow(ctx, tmdbID)
+	if errors.Is(err, providers.ErrNotFound) {
+		return &showNotFound{err}
+	}
 	if err != nil {
 		return err
 	}
 	for _, sum := range show.Seasons {
 		season, err := s.md.Season(ctx, tmdbID, sum.SeasonNumber)
+		if errors.Is(err, providers.ErrNotFound) {
+			if err := s.write.MarkSeasonNotFound(ctx, sqlc.MarkSeasonNotFoundParams{
+				Now: nullString(db.Timestamp(s.now())), TmdbID: int64(sum.TMDBID),
+			}); err != nil {
+				return fmt.Errorf("mark season not found: %w", err)
+			}
+			s.logger.Warn("TMDB season not found", "show", tmdbID, "season", sum.SeasonNumber)
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("sync season %d: %w", sum.SeasonNumber, err)
 		}

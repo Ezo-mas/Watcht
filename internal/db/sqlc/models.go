@@ -76,6 +76,7 @@ type Movie struct {
 	VoteCount         int64
 	CreatedAt         string
 	MetadataUpdatedAt string
+	LastViewedAt      sql.NullString
 }
 
 type MovieGenre struct {
@@ -104,6 +105,7 @@ type Season struct {
 	MissingSince      sql.NullString
 	EpisodesUpdatedAt sql.NullString
 	CreatedAt         string
+	NotFoundSince     sql.NullString
 }
 
 type Session struct {
@@ -134,6 +136,7 @@ type Show struct {
 	VoteCount         int64
 	CreatedAt         string
 	MetadataUpdatedAt string
+	LastViewedAt      sql.NullString
 }
 
 type ShowGenre struct {
