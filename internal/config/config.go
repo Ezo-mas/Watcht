@@ -28,6 +28,10 @@ type Config struct {
 	// X-Forwarded-Proto headers are believed (WATCHT_TRUSTED_PROXIES). Nil
 	// when unset.
 	TrustedProxies []netip.Prefix
+	// TMDBToken is TMDB's API Read Access Token (WATCHT_TMDB_API_KEY), with
+	// surrounding space removed. Empty when unset: the server still starts,
+	// and TMDB features report that they aren't configured.
+	TMDBToken string
 }
 
 const (
@@ -61,6 +65,9 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 			return Config{}, err
 		}
 		cfg.TrustedProxies = proxies
+	}
+	if v, ok := lookup("WATCHT_TMDB_API_KEY"); ok {
+		cfg.TMDBToken = strings.TrimSpace(v)
 	}
 
 	if _, _, err := net.SplitHostPort(cfg.Listen); err != nil {
