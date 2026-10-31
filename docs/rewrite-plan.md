@@ -375,6 +375,14 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - An episode or season that TMDB stops listing is kept, since watch history points at it, and gets a `missing_since` time. It's hidden from season lists and progress, and comes back if TMDB lists it again.
     - Only `tmdb_id` is unique. `imdb_id` and `tvdb_id` get plain indexes, because TMDB sometimes has two entries with the same IMDb or TVDB ID, and that mustn't stop a title from being stored. Imports (M5) send more than one match to review. `trakt_id` arrives with M5.
     - Genres are a `genres` table (TMDB genre ID and name) with `movie_genres` and `show_genres` join tables.
+  - Slice 4a is built, in review: migration 00006 (`genres`, `movies`, `shows`, `movie_genres`, `show_genres`, `seasons`, `episodes`) and `internal/catalog`, which stores TMDB data (`UpsertMovie`, `UpsertShow`, `UpsertSeason`, `FetchMovie`, `FetchShow`, `SyncShow`) and reads it back by TMDB ID. Nothing calls it yet. Decisions made while building it:
+    - Each upsert is one write transaction, and no TMDB call is made while one is open: the single write connection would deadlock with the client's cache write.
+    - An episode is matched only by its TMDB ID, so a renumbering or a move to another season or show keeps its row. An episode that its season's latest response doesn't list gets `missing_since` at once, not only after a full refresh, so a moved episode never shows twice. It's cleared when the season it moved to is stored, so the order seasons are fetched in doesn't matter.
+    - `tmdb_id` must be above 0 everywhere, so a row TMDB sent without an ID can't merge unrelated episodes. Season and episode numbers have plain indexes, not unique ones, so a renumbering that swaps two episodes can't fail halfway.
+    - If TMDB's season list repeats a number, `SeasonEpisodes` reads the season with the lowest TMDB ID (see `docs/TECH_DEBT.md`).
+    - A season response has no episode IMDb or TVDB IDs, so storing a season leaves those columns alone instead of clearing them. Nothing fills them yet; M5's import matching needs a source (the episode endpoint returns them).
+    - A season's episode count is TMDB's count from the show's season list, not the number of episodes stored. `episodes_updated_at` stays empty until a season's episodes have been stored, which tells "not fetched yet" apart from "no episodes".
+    - For M4: when a whole season goes missing, its episodes aren't marked themselves. Progress and stats queries must also check `seasons.missing_since`.
 
 ### M4: Tracking parity
 
