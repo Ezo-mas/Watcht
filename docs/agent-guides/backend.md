@@ -133,7 +133,8 @@ tracking, auth, jobs, or the API shape.
    - Cache rows are pruned daily by the `provider_cache_prune` job, which is
      shared by every provider: a new provider adds no job.
 3. Return plain structs; let `catalog` and `tracking` store them.
-4. Record real responses into `testdata/` and test against them. Strip
+4. Record real responses into `testdata/` with the `record-fixture` skill
+   (`scripts/record-fixture.sh`) and test against them. Strip
    personal data from fixtures before committing. The client's own tests use
    an `httptest` server on loopback; nothing in the suite reaches the network.
    List each fixture's request in a `testdata/README.md`, along with how it was
