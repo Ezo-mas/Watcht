@@ -393,12 +393,20 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - Opening a page marks it viewed at most once an hour. The sync job is queued after the show's write commits, with a context that survives the client disconnecting, and a unique key so a second open doesn't queue it twice.
     - Slice 5's handlers need the catalog service, but the router is built before the job queue starts (the port is bound first). Slice 5 splits building the queue and the catalog from starting the queue.
 
-  - For slice 5 (search and detail endpoints), from the slice 3–4b reviews:
-    - `startJobs` builds the TMDB client and the catalog service but only after the queue starts, and the router is built before that (the port is bound first). Split building the queue, the TMDB client, and the catalog from starting the queue, so the handlers get the service.
-    - A detail endpoint reads stored data and calls `FetchMovie`/`FetchShow` only for a title that isn't stored yet: a page-load fetch can be served the client's stale fallback and would store it as fresh. It calls `MarkMovieViewed`/`MarkShowViewed`. A season whose `episodes_updated_at` is empty hasn't been fetched yet; the API should say so rather than return an empty list.
-    - Search goes to TMDB (`tmdb.Search`). Cap the query length in the handler: each distinct query is a `provider_cache` row.
-    - Without `WATCHT_TMDB_API_KEY`, catalog endpoints return a clear "not configured" error (maintainer decision, 2026-10-28).
-    - The endpoints put user input into outbound requests, so the slice needs a security review.
+  - Slice 5 is built (branch `m3-endpoints`, not merged): `GET /api/v1/search`, `/movies/{id}`, `/shows/{id}`, and `/shows/{id}/seasons/{number}` in `internal/httpapi/catalog.go`, behind `withUser`; `buildJobs` in `cmd/watcht` builds the queue, TMDB client, and catalog without starting the queue, so the router gets them before the port is bound; `providers.Unavailable`; the TypeScript types and `web/src/lib/api/catalog.ts`. Decided by the maintainer (2026-11-02):
+    - A season whose episodes the background job hasn't fetched yet (`episodes_updated_at` is empty) returns 200 with `"episodes_pending": true` and `"episodes": null`. Each season in the show response carries `episodes_pending` too.
+    - Without `WATCHT_TMDB_API_KEY`, all four routes return 503 `tmdb_not_configured`, checked after authentication, so a signed-out request is still 401.
+    - Search results use `"show"` for TMDB's `"tv"`, matching the routes.
+  - Decisions made while building it:
+    - A detail page reads stored data and fetches from TMDB only for a title that isn't stored, then marks it viewed; a failed view write is logged and the page is still served. The season endpoint never fetches: it's 404 for a show that isn't stored, so the SPA opens the show first. Reading a season marks its show viewed.
+    - Search trims the query and collapses runs of whitespace, then allows 1 to 100 characters (runes); `page` is 1 to 500. Path IDs are base-10 integers that fit TMDB's signed 32-bit IDs (show and movie IDs 1 or more, season numbers 0 or more); anything else is 404 with no TMDB request.
+    - Errors: not found (stored or at TMDB) is 404 `not_found`. Any provider failure, meaning a status error (TMDB's 401 for a bad token included), a transport failure, or an unusable body, is 502 `provider_unavailable` and is logged; the provider client's errors never carry the query or headers. Anything else is a 500. A request the client cancelled gets no response body.
+  - Accepted risks from the slice 5 review (2026-11-02), not fixed:
+    - A first fetch can still be served the client's stale fallback (only if an earlier fetch succeeded but its upsert failed), and is then stored as fresh. Page loads keep the fallback, as decided in 4b.
+    - Every distinct query and page is a `provider_cache` row kept about 31 days. The 100-character cap, sign-in, and the rate limit bound it.
+    - TMDB 404s aren't cached, so each request for a missing ID costs a TMDB request.
+    - A rejected token (TMDB's 401) is a 502 that says to try again later, and every request logs an error. A separate code or a hint to check `WATCHT_TMDB_API_KEY` can come with the admin settings page.
+    - The GET routes write (fetching and storing a title, marking it viewed), and GETs pass the cross-origin check, so another site can make a signed-in browser store a title. No user data changes.
 
 ### M4: Tracking parity
 

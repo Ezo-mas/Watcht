@@ -33,6 +33,24 @@ import (
 // ErrNotFound matches (through errors.Is) a 404 from a provider.
 var ErrNotFound = errors.New("not found")
 
+// ErrBadResponse matches an unusable response body, without exposing its text.
+var ErrBadResponse = errors.New("bad response")
+
+// Unavailable reports a provider status, transport, or response-body failure.
+// Every *StatusError counts, 4xx included (a 404, a rejected key), so check
+// ErrNotFound first, and don't use it alone to decide whether to back off.
+// Caller context cancellation and deadlines are returned without these wrappers.
+func Unavailable(err error) bool {
+	_, status := errors.AsType[*StatusError](err)
+	_, transport := errors.AsType[*transportError](err)
+	return status || transport || errors.Is(err, ErrBadResponse)
+}
+
+type badResponseError struct{ message string }
+
+func (e *badResponseError) Error() string { return e.message }
+func (e *badResponseError) Unwrap() error { return ErrBadResponse }
+
 const (
 	defaultRatePerSecond = 20
 	defaultBurst         = 20

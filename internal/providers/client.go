@@ -84,7 +84,7 @@ func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, ttl
 	}
 	if !json.Valid(body) {
 		// No decoder message: its syntax errors quote a byte of the body.
-		return fmt.Errorf("%s: GET %s: response is not valid JSON", c.provider, path)
+		return c.badResponse(path, "response is not valid JSON")
 	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return c.decodeError(path, err)
@@ -100,8 +100,8 @@ func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, ttl
 }
 
 // fetch makes the request, retrying as the policy allows, and returns the body
-// of the 200 response. Its errors are a *StatusError, a *transportError, or a
-// plain error (the context ended, or the body was too large).
+// of the 200 response. Its errors are a *StatusError, a *transportError,
+// an ErrBadResponse, or a caller context error.
 func (c *Client) fetch(ctx context.Context, path, key string) ([]byte, error) {
 	for n := 1; ; n++ {
 		// Every attempt, retries included, takes a rate-limit token first. A
@@ -174,7 +174,7 @@ type response struct {
 
 // send makes one request under the per-attempt timeout, which also covers
 // reading the body. A failure to get a response is a *transportError; a body
-// over maxBodyBytes is a plain error.
+// over maxBodyBytes wraps ErrBadResponse.
 func (c *Client) send(ctx context.Context, path, key string) (response, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -207,7 +207,7 @@ func (c *Client) send(ctx context.Context, path, key string) (response, error) {
 		return response{}, c.transportFailure(path, err)
 	}
 	if len(body) > maxBodyBytes {
-		return response{}, fmt.Errorf("%s: GET %s: response is larger than %d bytes", c.provider, path, maxBodyBytes)
+		return response{}, c.badResponse(path, fmt.Sprintf("response is larger than %d bytes", maxBodyBytes))
 	}
 	res.body = body
 	return res, nil
@@ -223,6 +223,11 @@ func (c *Client) statusError(path string, status int) error {
 	return &StatusError{Provider: c.provider, Path: path, StatusCode: status}
 }
 
+// badResponse preserves the diagnostic message while wrapping ErrBadResponse.
+func (c *Client) badResponse(path, message string) error {
+	return fmt.Errorf("%s: GET %s: %w", c.provider, path, &badResponseError{message: message})
+}
+
 // decodeError reports a valid JSON body that doesn't fit out. It names the
 // field and the Go type, never json's text: a type error can quote a number
 // from the body, such as one that overflows.
@@ -230,11 +235,11 @@ func (c *Client) decodeError(path string, err error) error {
 	ute, ok := errors.AsType[*json.UnmarshalTypeError](err)
 	switch {
 	case ok && ute.Field != "":
-		return fmt.Errorf("%s: GET %s: response field %s is not a %s", c.provider, path, ute.Field, ute.Type)
+		return c.badResponse(path, fmt.Sprintf("response field %s is not a %s", ute.Field, ute.Type))
 	case ok:
-		return fmt.Errorf("%s: GET %s: response is not a %s", c.provider, path, ute.Type)
+		return c.badResponse(path, fmt.Sprintf("response is not a %s", ute.Type))
 	default:
-		return fmt.Errorf("%s: GET %s: response doesn't match the expected shape", c.provider, path)
+		return c.badResponse(path, "response doesn't match the expected shape")
 	}
 }
 

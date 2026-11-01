@@ -123,9 +123,11 @@ tracking, auth, jobs, or the API shape.
      after the retries, an expired cache entry is served with a warning. A 4xx
      is never covered by it.
    - **Errors:** a 404 matches `errors.Is(err, providers.ErrNotFound)`. Other
-     failures are a `*providers.StatusError` (status and path) or a transport
-     error. Neither includes the query, headers, or body, so they're safe to
-     log and to show.
+     failures are a `*providers.StatusError` (status and path), a transport
+     error, or an unusable body (`errors.Is(err, providers.ErrBadResponse)`).
+     None includes the query, headers, or body, so they're safe to log and to
+     show. `providers.Unavailable(err)` matches all three; the API maps it to
+     502 `provider_unavailable`.
    - Redirects are not followed: the key header would be sent to the new host.
      A 3xx comes back as a `StatusError`.
    - Pass a fresh `out` each call. A decode that fails part way can leave it

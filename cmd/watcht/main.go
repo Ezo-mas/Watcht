@@ -101,14 +101,18 @@ func serve(stderr io.Writer) int {
 	}
 
 	authService := auth.New(database, auth.Options{Logger: logger})
-	handler, err := httpapi.NewRouter(httpapi.Deps{
+	queue, catalogService, tmdbClient := buildJobs(database, logger, authService, cfg.TMDBToken)
+	deps := httpapi.Deps{
 		Logger:         logger,
 		WebUI:          webui.Handler(webui.Dist()),
 		Health:         database.Ping,
 		Auth:           authService,
+		Catalog:        catalogService,
+		Search:         tmdbClient,
 		BaseOrigin:     cfg.BaseOrigin(),
 		TrustedProxies: cfg.TrustedProxies,
-	})
+	}
+	handler, err := httpapi.NewRouter(deps)
 	if err != nil {
 		logger.Error("invalid configuration", "err", err)
 		_ = database.Close()
@@ -128,9 +132,7 @@ func serve(stderr io.Writer) int {
 	// Background work shares the server's context, so a signal stops both.
 	jobsCtx, stopJobs := context.WithCancel(ctx)
 	defer stopJobs()
-	// Slice 5's handlers will take the returned catalog service.
-	queue, _, err := startJobs(jobsCtx, database, logger, authService, cfg.TMDBToken)
-	if err != nil {
+	if err := queue.Start(jobsCtx); err != nil {
 		logger.Error("start background jobs", "err", err)
 		_ = ln.Close()
 		_ = database.Close()
