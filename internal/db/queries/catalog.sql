@@ -276,16 +276,18 @@ ORDER BY genres.name, genres.tmdb_id;
 -- ListShowSeasons returns a show's seasons that TMDB still lists, by number.
 -- Numbers can repeat only if TMDB's list does, so the TMDB ID breaks ties.
 -- name: ListShowSeasons :many
-SELECT tmdb_id, season_number, name, overview, poster_path, air_date, episode_count
+SELECT tmdb_id, season_number, name, overview, poster_path, air_date, episode_count, episodes_updated_at
 FROM seasons
 WHERE show_id = sqlc.arg(show_id) AND missing_since IS NULL AND not_found_since IS NULL
 ORDER BY season_number, tmdb_id;
 
--- GetVisibleSeasonID returns the internal ID of the season a show lists with
+-- GetVisibleSeason returns the season a show lists with
 -- this number. If two listed seasons share the number, it's the one with the
 -- lowest TMDB season ID.
--- name: GetVisibleSeasonID :one
-SELECT seasons.id
+-- name: GetVisibleSeason :one
+SELECT seasons.id, seasons.tmdb_id, seasons.season_number, seasons.name,
+    seasons.overview, seasons.poster_path, seasons.air_date,
+    seasons.episode_count, seasons.episodes_updated_at
 FROM seasons
 JOIN shows ON shows.id = seasons.show_id
 WHERE shows.tmdb_id = sqlc.arg(show_tmdb_id)

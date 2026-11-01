@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { changePassword, createToken, listTokens, revokeToken } from './account';
 import { createUser, deleteUser, listUsers, resetPassword } from './users';
+import { getMovie, getSeason, getShow, search } from './catalog';
 
 // Each wrapper must send exactly what the Go handlers expect
 // (internal/httpapi/accounts.go and tokens.go).
@@ -96,5 +97,53 @@ describe('user endpoints', () => {
 			method: 'PUT',
 			body: { password: 'new pw' }
 		});
+	});
+});
+
+describe('catalog endpoints', () => {
+	it('search encodes the query and page', async () => {
+		const results = { page: 2, total_pages: 3, total_results: 41, results: [] };
+		const f = recorder(200, results);
+		expect(await search('a & b?日本語', 2, f)).toEqual(results);
+		const request = sent(f);
+		const url = new URL(request.path, 'https://watcht.example');
+		expect(url.pathname).toBe('/api/v1/search');
+		expect([...url.searchParams]).toEqual([
+			['q', 'a & b?日本語'],
+			['page', '2']
+		]);
+		expect(request).toMatchObject({ method: 'GET', body: undefined });
+	});
+
+	it('search leaves the default page to the server', async () => {
+		const f = recorder(200, { page: 1, total_pages: 0, total_results: 0, results: [] });
+		await search('matrix', undefined, f);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/search?q=matrix', method: 'GET' });
+	});
+
+	it('getMovie unwraps the movie', async () => {
+		const movie = { tmdb_id: 603, title: 'The Matrix' };
+		const f = recorder(200, { movie });
+		expect(await getMovie(603, f)).toEqual(movie);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/movies/603', method: 'GET' });
+	});
+
+	it('getShow unwraps the show', async () => {
+		const show = { tmdb_id: 1399, name: 'Game of Thrones', seasons: [] };
+		const f = recorder(200, { show });
+		expect(await getShow(1399, f)).toEqual(show);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/shows/1399', method: 'GET' });
+	});
+
+	it.each([null, []])('getSeason preserves episodes %j', async (episodes) => {
+		const season = {
+			show_tmdb_id: 1399,
+			season: { tmdb_id: 3627, season_number: 0, episodes_pending: episodes === null },
+			episodes_pending: episodes === null,
+			episodes
+		};
+		const f = recorder(200, season);
+		expect(await getSeason(1399, 0, f)).toEqual(season);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/shows/1399/seasons/0', method: 'GET' });
 	});
 });

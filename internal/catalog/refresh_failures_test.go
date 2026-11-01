@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -200,16 +201,49 @@ func TestBackgroundWithoutStale(t *testing.T) {
 
 // afterCommitContext reports cancellation only once a row is visible on the
 // read pool. Done stays nil so cancellation cannot race the commit itself.
+// database/sql also calls Err from a goroutine after a transaction's rows
+// close, which can run after Refresh returns, so the queries are tracked:
+// stop, registered after the database, ends them before it closes.
 type afterCommitContext struct {
 	context.Context
 	e     *env
 	table string
+	g     *errGuard
+}
+
+type errGuard struct {
+	mu        sync.Mutex
+	stopped   bool
+	cancelled bool
+	running   sync.WaitGroup
+}
+
+func newAfterCommitContext(t *testing.T, e *env, table string) afterCommitContext {
+	g := &errGuard{}
+	t.Cleanup(func() {
+		g.mu.Lock()
+		g.stopped = true
+		g.mu.Unlock()
+		g.running.Wait()
+	})
+	return afterCommitContext{Context: context.Background(), e: e, table: table, g: g}
 }
 
 func (c afterCommitContext) Err() error {
+	c.g.mu.Lock()
+	if c.g.stopped || c.g.cancelled {
+		c.g.mu.Unlock()
+		return context.Canceled
+	}
+	c.g.running.Add(1)
+	c.g.mu.Unlock()
+	defer c.g.running.Done()
 	var updated string
 	err := c.e.d.Read.QueryRowContext(context.Background(), "SELECT metadata_updated_at FROM "+c.table+" WHERE tmdb_id=1").Scan(&updated)
 	if err == nil && updated == db.Timestamp(testNow) {
+		c.g.mu.Lock()
+		c.g.cancelled = true
+		c.g.mu.Unlock()
 		return context.Canceled
 	}
 	return nil
@@ -350,7 +384,7 @@ func TestRefreshCancellationGuards(t *testing.T) {
 				e.at(0)
 				md := &refreshMetadata{fakeMetadata: e.md}
 				e.s.md = md
-				err := e.s.Refresh(afterCommitContext{Context: ctx, e: e, table: table})
+				err := e.s.Refresh(newAfterCommitContext(t, e, table))
 				if !errors.Is(err, context.Canceled) {
 					t.Fatalf("final cancellation lost: %v", err)
 				}

@@ -68,13 +68,14 @@ type Show struct {
 // Season is one season of a show. EpisodeCount is the count TMDB gives in the
 // show's season list.
 type Season struct {
-	TMDBID       int
-	SeasonNumber int
-	Name         string
-	Overview     string
-	PosterPath   string
-	AirDate      string
-	EpisodeCount int
+	TMDBID          int
+	SeasonNumber    int
+	Name            string
+	Overview        string
+	PosterPath      string
+	AirDate         string
+	EpisodeCount    int
+	EpisodesPending bool
 }
 
 // Episode is a stored episode, identified by its TMDB episode ID.
@@ -163,13 +164,14 @@ func (s *Service) Show(ctx context.Context, tmdbID int) (Show, error) {
 	seasons := make([]Season, 0, len(seasonRows))
 	for _, r := range seasonRows {
 		seasons = append(seasons, Season{
-			TMDBID:       int(r.TmdbID),
-			SeasonNumber: int(r.SeasonNumber),
-			Name:         r.Name,
-			Overview:     r.Overview,
-			PosterPath:   r.PosterPath,
-			AirDate:      r.AirDate.String,
-			EpisodeCount: int(r.EpisodeCount),
+			TMDBID:          int(r.TmdbID),
+			SeasonNumber:    int(r.SeasonNumber),
+			Name:            r.Name,
+			Overview:        r.Overview,
+			PosterPath:      r.PosterPath,
+			AirDate:         r.AirDate.String,
+			EpisodeCount:    int(r.EpisodeCount),
+			EpisodesPending: !r.EpisodesUpdatedAt.Valid,
 		})
 	}
 	return Show{
@@ -201,19 +203,39 @@ func (s *Service) Show(ctx context.Context, tmdbID int) (Show, error) {
 // returns ErrNotFound if the show or season isn't stored, or the season is
 // hidden because TMDB no longer lists it.
 func (s *Service) SeasonEpisodes(ctx context.Context, showTMDBID, seasonNumber int) ([]Episode, error) {
-	seasonID, err := s.read.GetVisibleSeasonID(ctx, sqlc.GetVisibleSeasonIDParams{
+	_, episodes, err := s.Season(ctx, showTMDBID, seasonNumber)
+	return episodes, err
+}
+
+// Season returns a visible season and its episodes. Episodes are nil while the
+// season has not been fetched, and an empty slice when a fetched season has none.
+func (s *Service) Season(ctx context.Context, showTMDBID, seasonNumber int) (Season, []Episode, error) {
+	row, err := s.read.GetVisibleSeason(ctx, sqlc.GetVisibleSeasonParams{
 		ShowTmdbID:   int64(showTMDBID),
 		SeasonNumber: int64(seasonNumber),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+		return Season{}, nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read season %d of show %d: %w", seasonNumber, showTMDBID, err)
+		return Season{}, nil, fmt.Errorf("read season %d of show %d: %w", seasonNumber, showTMDBID, err)
 	}
-	rows, err := s.read.ListSeasonEpisodes(ctx, seasonID)
+	season := Season{
+		TMDBID:          int(row.TmdbID),
+		SeasonNumber:    int(row.SeasonNumber),
+		Name:            row.Name,
+		Overview:        row.Overview,
+		PosterPath:      row.PosterPath,
+		AirDate:         row.AirDate.String,
+		EpisodeCount:    int(row.EpisodeCount),
+		EpisodesPending: !row.EpisodesUpdatedAt.Valid,
+	}
+	if season.EpisodesPending {
+		return season, nil, nil
+	}
+	rows, err := s.read.ListSeasonEpisodes(ctx, row.ID)
 	if err != nil {
-		return nil, fmt.Errorf("read episodes of season %d of show %d: %w", seasonNumber, showTMDBID, err)
+		return Season{}, nil, fmt.Errorf("read episodes of season %d of show %d: %w", seasonNumber, showTMDBID, err)
 	}
 	episodes := make([]Episode, 0, len(rows))
 	for _, r := range rows {
@@ -231,5 +253,5 @@ func (s *Service) SeasonEpisodes(ctx context.Context, showTMDBID, seasonNumber i
 			TVDBID:        int(r.TvdbID.Int64),
 		})
 	}
-	return episodes, nil
+	return season, episodes, nil
 }

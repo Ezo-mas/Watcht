@@ -9,6 +9,7 @@ import (
 	"github.com/Ezo-mas/watcht/internal/auth"
 	"github.com/Ezo-mas/watcht/internal/catalog"
 	"github.com/Ezo-mas/watcht/internal/db"
+	"github.com/Ezo-mas/watcht/internal/httpapi"
 	"github.com/Ezo-mas/watcht/internal/jobs"
 	"github.com/Ezo-mas/watcht/internal/providers"
 	"github.com/Ezo-mas/watcht/internal/providers/tmdb"
@@ -28,19 +29,21 @@ const (
 	providerCachePruneInterval = 24 * time.Hour
 )
 
-// startJobs registers the job handlers and schedules, then starts recovery,
-// the worker, and the scheduler. They stop when ctx is cancelled; call Wait
-// before closing the database. With a token, it also builds and returns the
-// catalog service and registers its sync and hourly refresh jobs.
-func startJobs(ctx context.Context, d *db.DB, logger *slog.Logger, authService *auth.Service, token string) (*jobs.Queue, *catalog.Service, error) {
+// buildJobs registers handlers and schedules and builds the catalog without
+// starting recovery, the worker, or the scheduler. Start the queue only after
+// binding the server port, and call Wait before closing the database.
+func buildJobs(d *db.DB, logger *slog.Logger, authService *auth.Service, token string) (*jobs.Queue, httpapi.Catalog, httpapi.CatalogSearch) {
 	q := jobs.New(d, jobs.Options{Logger: logger})
-	var catalogService *catalog.Service
+	var catalogAPI httpapi.Catalog
+	var searchAPI httpapi.CatalogSearch
 	if token != "" {
 		client := tmdb.New(d, tmdb.Options{Token: token, UserAgent: "watcht/" + version, Logger: logger})
-		catalogService = catalog.New(d, client, catalog.Options{Jobs: q, Logger: logger})
+		catalogService := catalog.New(d, client, catalog.Options{Jobs: q, Logger: logger})
 		q.Register(catalog.JobSyncShow, catalogService.HandleSyncShow)
 		q.Register(catalog.JobRefresh, func(ctx context.Context, _ json.RawMessage) error { return catalogService.Refresh(ctx) })
 		q.Every(catalog.JobRefresh, time.Hour)
+		catalogAPI = catalogService
+		searchAPI = client
 	}
 	// Without a token, old catalog jobs fail once as unknown kinds. Refresh
 	// catches up when the token is configured again.
@@ -66,8 +69,5 @@ func startJobs(ctx context.Context, d *db.DB, logger *slog.Logger, authService *
 		return nil
 	})
 	q.Every(jobProviderCachePrune, providerCachePruneInterval)
-	if err := q.Start(ctx); err != nil {
-		return nil, nil, err
-	}
-	return q, catalogService, nil
+	return q, catalogAPI, searchAPI
 }

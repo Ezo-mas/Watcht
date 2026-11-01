@@ -189,8 +189,10 @@ func (q *Queries) GetShowID(ctx context.Context, tmdbID int64) (int64, error) {
 	return id, err
 }
 
-const getVisibleSeasonID = `-- name: GetVisibleSeasonID :one
-SELECT seasons.id
+const getVisibleSeason = `-- name: GetVisibleSeason :one
+SELECT seasons.id, seasons.tmdb_id, seasons.season_number, seasons.name,
+    seasons.overview, seasons.poster_path, seasons.air_date,
+    seasons.episode_count, seasons.episodes_updated_at
 FROM seasons
 JOIN shows ON shows.id = seasons.show_id
 WHERE shows.tmdb_id = ?1
@@ -200,19 +202,41 @@ ORDER BY seasons.tmdb_id
 LIMIT 1
 `
 
-type GetVisibleSeasonIDParams struct {
+type GetVisibleSeasonParams struct {
 	ShowTmdbID   int64
 	SeasonNumber int64
 }
 
-// GetVisibleSeasonID returns the internal ID of the season a show lists with
+type GetVisibleSeasonRow struct {
+	ID                int64
+	TmdbID            int64
+	SeasonNumber      int64
+	Name              string
+	Overview          string
+	PosterPath        string
+	AirDate           sql.NullString
+	EpisodeCount      int64
+	EpisodesUpdatedAt sql.NullString
+}
+
+// GetVisibleSeason returns the season a show lists with
 // this number. If two listed seasons share the number, it's the one with the
 // lowest TMDB season ID.
-func (q *Queries) GetVisibleSeasonID(ctx context.Context, arg GetVisibleSeasonIDParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getVisibleSeasonID, arg.ShowTmdbID, arg.SeasonNumber)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) GetVisibleSeason(ctx context.Context, arg GetVisibleSeasonParams) (GetVisibleSeasonRow, error) {
+	row := q.db.QueryRowContext(ctx, getVisibleSeason, arg.ShowTmdbID, arg.SeasonNumber)
+	var i GetVisibleSeasonRow
+	err := row.Scan(
+		&i.ID,
+		&i.TmdbID,
+		&i.SeasonNumber,
+		&i.Name,
+		&i.Overview,
+		&i.PosterPath,
+		&i.AirDate,
+		&i.EpisodeCount,
+		&i.EpisodesUpdatedAt,
+	)
+	return i, err
 }
 
 const listMovieGenres = `-- name: ListMovieGenres :many
@@ -351,20 +375,21 @@ func (q *Queries) ListShowGenres(ctx context.Context, showID int64) ([]ListShowG
 }
 
 const listShowSeasons = `-- name: ListShowSeasons :many
-SELECT tmdb_id, season_number, name, overview, poster_path, air_date, episode_count
+SELECT tmdb_id, season_number, name, overview, poster_path, air_date, episode_count, episodes_updated_at
 FROM seasons
 WHERE show_id = ?1 AND missing_since IS NULL AND not_found_since IS NULL
 ORDER BY season_number, tmdb_id
 `
 
 type ListShowSeasonsRow struct {
-	TmdbID       int64
-	SeasonNumber int64
-	Name         string
-	Overview     string
-	PosterPath   string
-	AirDate      sql.NullString
-	EpisodeCount int64
+	TmdbID            int64
+	SeasonNumber      int64
+	Name              string
+	Overview          string
+	PosterPath        string
+	AirDate           sql.NullString
+	EpisodeCount      int64
+	EpisodesUpdatedAt sql.NullString
 }
 
 // ListShowSeasons returns a show's seasons that TMDB still lists, by number.
@@ -386,6 +411,7 @@ func (q *Queries) ListShowSeasons(ctx context.Context, showID int64) ([]ListShow
 			&i.PosterPath,
 			&i.AirDate,
 			&i.EpisodeCount,
+			&i.EpisodesUpdatedAt,
 		); err != nil {
 			return nil, err
 		}

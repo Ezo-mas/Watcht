@@ -41,9 +41,9 @@ func TestProviderCachePruneJobRuns(t *testing.T) {
 
 	jobCtx, stop := context.WithCancel(ctx)
 	cheap := auth.Argon2Params{Memory: 64, Time: 1, Threads: 1}
-	q, _, err := startJobs(jobCtx, d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{Argon2: cheap}), "")
-	if err != nil {
-		t.Fatalf("startJobs: %v", err)
+	q, _, _ := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{Argon2: cheap}), "")
+	if err := q.Start(jobCtx); err != nil {
+		t.Fatalf("start jobs: %v", err)
 	}
 	t.Cleanup(func() {
 		stop()
@@ -77,15 +77,25 @@ func TestCatalogJobsWiring(t *testing.T) {
 		t.Run(map[bool]string{false: "without token", true: "with token"}[token != ""], func(t *testing.T) {
 			d := dbtest.New(t)
 			ctx, stop := context.WithCancel(context.Background())
-			q, service, err := startJobs(ctx, d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{}), token)
-			if err != nil {
+			q, service, client := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{}), token)
+			var beforeStart int
+			if err := d.Read.QueryRowContext(ctx, "SELECT count(*) FROM jobs").Scan(&beforeStart); err != nil {
+				t.Fatal(err)
+			}
+			if beforeStart != 0 {
+				t.Fatal("building jobs started the scheduler")
+			}
+			if (client != nil) != (token != "") {
+				t.Fatalf("search available = %t, want %t (TMDB token configured)", client != nil, token != "")
+			}
+			if (service != nil) != (token != "") {
+				t.Fatalf("catalog available = %t, want %t (TMDB token configured)", service != nil, token != "")
+			}
+			if err := q.Start(ctx); err != nil {
 				stop()
 				t.Fatal(err)
 			}
 			defer func() { stop(); q.Wait() }()
-			if (service != nil) != (token != "") {
-				t.Fatal("catalog availability")
-			}
 			// Empty catalog: the scheduled refresh never needs a network request.
 			deadline := time.Now().Add(10 * time.Second)
 			for {

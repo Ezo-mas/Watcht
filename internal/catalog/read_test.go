@@ -152,3 +152,31 @@ func TestRepeatedSeasonNumberResolvesToLowestTMDBID(t *testing.T) {
 		t.Errorf("SeasonEpisodes(1) after 200 left = %v, %v; want [3001]", tmdbIDs(eps), err)
 	}
 }
+
+func TestSeasonEpisodesPending(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	e.storeShow(t, summary(3572, 1, 7))
+	season, episodes, err := e.s.Season(ctx, 1396, 1)
+	if err != nil || !season.EpisodesPending || episodes != nil {
+		t.Fatalf("unfetched season = %+v, %v, %v; want pending with nil episodes", season, episodes, err)
+	}
+	show, err := e.s.Show(ctx, 1396)
+	if err != nil || !show.Seasons[0].EpisodesPending {
+		t.Fatalf("show before fetch = %+v, %v", show, err)
+	}
+
+	// A fetched season with no episodes is distinct from an unfetched season.
+	e.upsertSeason(t, testSeason(3572, 1))
+	season, episodes, err = e.s.Season(ctx, 1396, 1)
+	if err != nil || season.EpisodesPending || episodes == nil || len(episodes) != 0 {
+		t.Fatalf("fetched empty season = %+v, %v, %v; want not pending with []", season, episodes, err)
+	}
+	show, err = e.s.Show(ctx, 1396)
+	if err != nil || show.Seasons[0].EpisodesPending {
+		t.Fatalf("show after fetch = %+v, %v", show, err)
+	}
+	if _, _, err := e.s.Season(ctx, 1396, 2); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown season = %v, want ErrNotFound", err)
+	}
+}
