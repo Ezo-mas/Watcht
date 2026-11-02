@@ -88,6 +88,7 @@ func (h *catalogHandlers) searchTitles(w http.ResponseWriter, r *http.Request, _
 			Overview:      item.Overview,
 			Date:          item.Date,
 			PosterPath:    item.PosterPath,
+			PosterURL:     tmdbImage("w342", item.PosterPath),
 			VoteAverage:   item.VoteAverage,
 		})
 	}
@@ -219,6 +220,23 @@ func (h *catalogHandlers) fail(w http.ResponseWriter, r *http.Request, err error
 	}
 }
 
+// tmdbImageBase is where TMDB serves images. The optional image cache
+// (WATCHT_IMAGE_CACHE, later) replaces it with watcht's own image URLs.
+const tmdbImageBase = "https://image.tmdb.org/t/p/"
+
+// tmdbImage returns the URL of a TMDB image path at one size, such as
+// tmdbImage("w342", "/abc.jpg"), or "" when TMDB has no image. The path ends
+// up in <img src>, so anything but a plain absolute path is refused.
+func tmdbImage(size, path string) string {
+	if path == "" {
+		return ""
+	}
+	if !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "?#\\") || strings.Contains(path, "..") {
+		return ""
+	}
+	return tmdbImageBase + size + path
+}
+
 type genreJSON struct {
 	TMDBID int    `json:"tmdb_id"`
 	Name   string `json:"name"`
@@ -241,7 +259,9 @@ type movieJSON struct {
 	Tagline          string      `json:"tagline"`
 	Status           string      `json:"status"`
 	PosterPath       string      `json:"poster_path"`
+	PosterURL        string      `json:"poster_url"`
 	BackdropPath     string      `json:"backdrop_path"`
+	BackdropURL      string      `json:"backdrop_url"`
 	ReleaseDate      string      `json:"release_date"`
 	Runtime          int         `json:"runtime"`
 	Genres           []genreJSON `json:"genres"`
@@ -264,7 +284,9 @@ func movieResponse(v catalog.Movie) movieJSON {
 		Tagline:          v.Tagline,
 		Status:           v.Status,
 		PosterPath:       v.PosterPath,
+		PosterURL:        tmdbImage("w342", v.PosterPath),
 		BackdropPath:     v.BackdropPath,
+		BackdropURL:      tmdbImage("w1280", v.BackdropPath),
 		ReleaseDate:      v.ReleaseDate,
 		Runtime:          v.Runtime,
 		Genres:           genres,
@@ -284,7 +306,9 @@ type showJSON struct {
 	Tagline          string           `json:"tagline"`
 	Status           string           `json:"status"`
 	PosterPath       string           `json:"poster_path"`
+	PosterURL        string           `json:"poster_url"`
 	BackdropPath     string           `json:"backdrop_path"`
+	BackdropURL      string           `json:"backdrop_url"`
 	FirstAirDate     string           `json:"first_air_date"`
 	LastAirDate      string           `json:"last_air_date"`
 	InProduction     bool             `json:"in_production"`
@@ -314,7 +338,9 @@ func showResponse(v catalog.Show) showJSON {
 		Tagline:          v.Tagline,
 		Status:           v.Status,
 		PosterPath:       v.PosterPath,
+		PosterURL:        tmdbImage("w342", v.PosterPath),
 		BackdropPath:     v.BackdropPath,
+		BackdropURL:      tmdbImage("w1280", v.BackdropPath),
 		FirstAirDate:     v.FirstAirDate,
 		LastAirDate:      v.LastAirDate,
 		InProduction:     v.InProduction,
@@ -331,6 +357,7 @@ type seasonJSONItem struct {
 	Name            string `json:"name"`
 	Overview        string `json:"overview"`
 	PosterPath      string `json:"poster_path"`
+	PosterURL       string `json:"poster_url"`
 	AirDate         string `json:"air_date"`
 	EpisodeCount    int    `json:"episode_count"`
 	EpisodesPending bool   `json:"episodes_pending"`
@@ -343,6 +370,7 @@ func seasonResponse(v catalog.Season) seasonJSONItem {
 		Name:            v.Name,
 		Overview:        v.Overview,
 		PosterPath:      v.PosterPath,
+		PosterURL:       tmdbImage("w342", v.PosterPath),
 		AirDate:         v.AirDate,
 		EpisodeCount:    v.EpisodeCount,
 		EpisodesPending: v.EpisodesPending,
@@ -356,6 +384,7 @@ type episodeJSON struct {
 	Name          string  `json:"name"`
 	Overview      string  `json:"overview"`
 	StillPath     string  `json:"still_path"`
+	StillURL      string  `json:"still_url"`
 	AirDate       string  `json:"air_date"`
 	Runtime       int     `json:"runtime"`
 	VoteAverage   float64 `json:"vote_average"`
@@ -369,6 +398,7 @@ func episodeResponse(v catalog.Episode) episodeJSON {
 		Name:          v.Name,
 		Overview:      v.Overview,
 		StillPath:     v.StillPath,
+		StillURL:      tmdbImage("w300", v.StillPath),
 		AirDate:       v.AirDate,
 		Runtime:       v.Runtime,
 		VoteAverage:   v.VoteAverage,
@@ -383,6 +413,7 @@ type searchResultJSON struct {
 	Overview      string  `json:"overview"`
 	Date          string  `json:"date"`
 	PosterPath    string  `json:"poster_path"`
+	PosterURL     string  `json:"poster_url"`
 	VoteAverage   float64 `json:"vote_average"`
 }
 type searchJSON struct {

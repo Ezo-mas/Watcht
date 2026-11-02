@@ -61,6 +61,8 @@ func TestLoadBaseURL(t *testing.T) {
 		env     map[string]string
 		wantURL string
 		wantErr string
+		// notInErr must not appear in the error, which is logged.
+		notInErr string
 	}{
 		{name: "unset", env: map[string]string{}},
 		{name: "empty", env: map[string]string{"WATCHT_BASE_URL": ""}},
@@ -81,7 +83,8 @@ func TestLoadBaseURL(t *testing.T) {
 		{name: "no host", env: map[string]string{"WATCHT_BASE_URL": "https://"}, wantErr: `WATCHT_BASE_URL "https://" must include a host`},
 		{name: "port without host", env: map[string]string{"WATCHT_BASE_URL": "https://:8080"}, wantErr: `WATCHT_BASE_URL "https://:8080" must include a host`},
 		{name: "empty port", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:"}, wantErr: `WATCHT_BASE_URL "https://watcht.example.com:" has an empty port`},
-		{name: "non-numeric port", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:http"}, wantErr: `WATCHT_BASE_URL "https://watcht.example.com:http" is not a valid URL`},
+		{name: "non-numeric port", env: map[string]string{"WATCHT_BASE_URL": "https://watcht.example.com:http"}, wantErr: `WATCHT_BASE_URL is not a valid URL`},
+		{name: "invalid URL with a password isn't echoed", env: map[string]string{"WATCHT_BASE_URL": "https://me:secret@watcht.example.com:http"}, wantErr: `WATCHT_BASE_URL is not a valid URL`, notInErr: "secret"},
 		{name: "username", env: map[string]string{"WATCHT_BASE_URL": "https://me@watcht.example.com"}, wantErr: `WATCHT_BASE_URL "https://me@watcht.example.com" must not include a username or password`},
 		{name: "password is redacted", env: map[string]string{"WATCHT_BASE_URL": "https://me:secret@watcht.example.com"}, wantErr: `WATCHT_BASE_URL "https://me:xxxxx@watcht.example.com" must not include a username or password`},
 		{name: "password is redacted before other checks", env: map[string]string{"WATCHT_BASE_URL": "ftp://me:secret@watcht.example.com"}, wantErr: `WATCHT_BASE_URL "ftp://me:xxxxx@watcht.example.com" must not include a username or password`},
@@ -103,6 +106,9 @@ func TestLoadBaseURL(t *testing.T) {
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("load() error = %v, want one containing %q", err, tt.wantErr)
+				}
+				if tt.notInErr != "" && strings.Contains(err.Error(), tt.notInErr) {
+					t.Fatalf("load() error %q contains %q", err, tt.notInErr)
 				}
 				return
 			}
@@ -208,6 +214,67 @@ func TestLoadTMDBToken(t *testing.T) {
 			}
 			if cfg.TMDBToken != tt.want {
 				t.Errorf("TMDBToken = %q, want %q", cfg.TMDBToken, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadTMDBBaseURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		want    string
+		wantErr string
+		// notInErr must not appear in the error, which is logged.
+		notInErr string
+	}{
+		{name: "unset", env: map[string]string{}},
+		{name: "empty", env: map[string]string{"WATCHT_TMDB_BASE_URL": ""}},
+		{name: "fake server with path", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3"}, want: "http://127.0.0.1:8098/3"},
+		{name: "trailing slashes are trimmed", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3//"}, want: "http://127.0.0.1:8098/3"},
+		{name: "https without a path", env: map[string]string{"WATCHT_TMDB_BASE_URL": "https://api.themoviedb.org"}, want: "https://api.themoviedb.org"},
+		{name: "scheme is lowercased", env: map[string]string{"WATCHT_TMDB_BASE_URL": "HTTP://localhost:8098/3"}, want: "http://localhost:8098/3"},
+		{name: "https to any host", env: map[string]string{"WATCHT_TMDB_BASE_URL": "https://tmdb.example.com/3"}, want: "https://tmdb.example.com/3"},
+		{name: "http to IPv6 loopback", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://[::1]:8098/3"}, want: "http://[::1]:8098/3"},
+		{name: "http to another host", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://tmdb.example.com/3"}, wantErr: `WATCHT_TMDB_BASE_URL "http://tmdb.example.com/3" must use https unless the host is loopback`},
+		{name: "http to a LAN address", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://192.168.1.5:8098/3"}, wantErr: `must use https unless the host is loopback`},
+		{name: "no scheme", env: map[string]string{"WATCHT_TMDB_BASE_URL": "127.0.0.1/3"}, wantErr: `WATCHT_TMDB_BASE_URL "127.0.0.1/3" must start with http:// or https://`},
+		{name: "wrong scheme", env: map[string]string{"WATCHT_TMDB_BASE_URL": "ftp://127.0.0.1/3"}, wantErr: `WATCHT_TMDB_BASE_URL "ftp://127.0.0.1/3" must start with http:// or https://`},
+		{name: "no host", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http:///3"}, wantErr: `WATCHT_TMDB_BASE_URL "http:///3" must include a host`},
+		{name: "empty port", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:/3"}, wantErr: `WATCHT_TMDB_BASE_URL "http://127.0.0.1:/3" has an empty port`},
+		{name: "not a URL", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://[::1/3"}, wantErr: `WATCHT_TMDB_BASE_URL is not a valid URL: missing ']' in host`},
+		{name: "invalid URL with a password isn't echoed", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://me:secret@[::1/3"}, wantErr: `WATCHT_TMDB_BASE_URL is not a valid URL`, notInErr: "secret"},
+		{name: "spaces around a password aren't echoed", env: map[string]string{"WATCHT_TMDB_BASE_URL": " http://me:secret@127.0.0.1:8098/3"}, wantErr: `must not have leading or trailing spaces`, notInErr: "secret"},
+		{name: "username", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://me@127.0.0.1:8098/3"}, wantErr: `WATCHT_TMDB_BASE_URL "http://me@127.0.0.1:8098/3" must not include a username or password`},
+		{name: "password is redacted", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://me:secret@127.0.0.1:8098/3"}, wantErr: `WATCHT_TMDB_BASE_URL "http://me:xxxxx@127.0.0.1:8098/3" must not include a username or password`},
+		{name: "query", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3?api_key=x"}, wantErr: `WATCHT_TMDB_BASE_URL "http://127.0.0.1:8098/3?api_key=x" must not have a query`},
+		{name: "empty query", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3?"}, wantErr: `WATCHT_TMDB_BASE_URL "http://127.0.0.1:8098/3?" must not have a query`},
+		{name: "fragment", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3#top"}, wantErr: `WATCHT_TMDB_BASE_URL "http://127.0.0.1:8098/3#top" must not have a fragment`},
+		{name: "empty fragment", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3#"}, wantErr: `WATCHT_TMDB_BASE_URL "http://127.0.0.1:8098/3#" must not have a fragment`},
+		{name: "leading space", env: map[string]string{"WATCHT_TMDB_BASE_URL": " http://127.0.0.1:8098/3"}, wantErr: `must not have leading or trailing spaces`},
+		{name: "trailing space", env: map[string]string{"WATCHT_TMDB_BASE_URL": "http://127.0.0.1:8098/3 "}, wantErr: `must not have leading or trailing spaces`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookup := func(k string) (string, bool) {
+				v, ok := tt.env[k]
+				return v, ok
+			}
+			cfg, err := load(lookup)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("load() error = %v, want one containing %q", err, tt.wantErr)
+				}
+				if tt.notInErr != "" && strings.Contains(err.Error(), tt.notInErr) {
+					t.Fatalf("load() error %q contains %q", err, tt.notInErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("load() error = %v", err)
+			}
+			if cfg.TMDBBaseURL != tt.want {
+				t.Errorf("TMDBBaseURL = %q, want %q", cfg.TMDBBaseURL, tt.want)
 			}
 		})
 	}

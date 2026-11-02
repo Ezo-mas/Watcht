@@ -17,6 +17,8 @@ func assertCatalogMovieFixture(t *testing.T, rec *httptest.ResponseRecorder) {
 	want := catalogFixtureFields(fixture, "imdb_id title original_title original_language overview tagline status poster_path backdrop_path release_date runtime vote_average vote_count")
 	want["tmdb_id"] = fixture["id"]
 	want["genres"] = catalogFixtureGenres(fixture)
+	want["poster_url"] = fixtureImageURL("w342", fixture["poster_path"])
+	want["backdrop_url"] = fixtureImageURL("w1280", fixture["backdrop_path"])
 	assertCatalogFields(t, rec, "movie", want)
 }
 
@@ -29,11 +31,14 @@ func assertCatalogShowFixture(t *testing.T, rec *httptest.ResponseRecorder) {
 	want["imdb_id"] = externalIDs["imdb_id"]
 	want["tvdb_id"] = externalIDs["tvdb_id"]
 	want["genres"] = catalogFixtureGenres(fixture)
+	want["poster_url"] = fixtureImageURL("w342", fixture["poster_path"])
+	want["backdrop_url"] = fixtureImageURL("w1280", fixture["backdrop_path"])
 	seasons := make([]map[string]any, 0)
 	for _, value := range fixture["seasons"].([]any) {
 		season := value.(map[string]any)
 		item := catalogFixtureFields(season, "season_number name poster_path air_date episode_count")
 		item["tmdb_id"] = season["id"]
+		item["poster_url"] = fixtureImageURL("w342", season["poster_path"])
 		// The initial show fetch stores only the season summary; the TMDB
 		// adapter doesn't include its overview until the season is fetched.
 		item["overview"] = ""
@@ -86,6 +91,17 @@ func catalogFixtureGenres(fixture map[string]any) []map[string]any {
 	return genres
 }
 
+// fixtureImageURL is the URL the API should return for a fixture's image
+// path. It's spelled out here, not built with tmdbImage, so the size and the
+// base are checked too. A null path means no image.
+func fixtureImageURL(size string, path any) string {
+	p, _ := path.(string)
+	if p == "" {
+		return ""
+	}
+	return "https://image.tmdb.org/t/p/" + size + p
+}
+
 func assertCatalogFields(t *testing.T, rec *httptest.ResponseRecorder, key string, want map[string]any) {
 	t.Helper()
 	if rec.Code != 200 {
@@ -129,6 +145,7 @@ func TestCatalogSeasonFields(t *testing.T) {
 	wantSeason := catalogFixtureFields(fixture, "season_number name overview poster_path air_date")
 	wantSeason["tmdb_id"] = fixture["id"]
 	wantSeason["episodes_pending"] = false
+	wantSeason["poster_url"] = fixtureImageURL("w342", fixture["poster_path"])
 	show := catalogFieldsFixture(t, "tv_1396.json")
 	for _, value := range show["seasons"].([]any) {
 		summary := value.(map[string]any)
@@ -141,6 +158,7 @@ func TestCatalogSeasonFields(t *testing.T) {
 		episode := value.(map[string]any)
 		want := catalogFixtureFields(episode, "season_number episode_number name overview still_path air_date runtime vote_average")
 		want["tmdb_id"] = episode["id"]
+		want["still_url"] = fixtureImageURL("w300", episode["still_path"])
 		episodes = append(episodes, want)
 	}
 	if len(episodes) < 2 {
@@ -164,6 +182,7 @@ func TestCatalogSearchFields(t *testing.T) {
 		result := value.(map[string]any)
 		item := catalogFixtureFields(result, "overview poster_path vote_average")
 		item["tmdb_id"] = result["id"]
+		item["poster_url"] = fixtureImageURL("w342", result["poster_path"])
 		switch result["media_type"] {
 		case "movie":
 			item["media_type"] = "movie"
@@ -187,4 +206,33 @@ func TestCatalogSearchFields(t *testing.T) {
 	}
 	want["results"] = results
 	assertCatalogFields(t, s.get("/api/v1/search?q=matrix"), "", want)
+}
+
+func TestTMDBImage(t *testing.T) {
+	tests := []struct {
+		name string
+		size string
+		path string
+		want string
+	}{
+		{name: "no image", size: "w342", path: "", want: ""},
+		{name: "poster", size: "w342", path: "/abc.jpg", want: "https://image.tmdb.org/t/p/w342/abc.jpg"},
+		{name: "backdrop", size: "w1280", path: "/def.jpg", want: "https://image.tmdb.org/t/p/w1280/def.jpg"},
+		{name: "no leading slash", size: "w342", path: "abc.jpg", want: ""},
+		{name: "absolute URL", size: "w342", path: "https://example.com/abc.jpg", want: ""},
+		// The host is fixed, so a path that starts with // stays on TMDB's image host.
+		{name: "protocol-relative path", size: "w342", path: "//example.com/abc.jpg", want: "https://image.tmdb.org/t/p/w342//example.com/abc.jpg"},
+		{name: "query", size: "w342", path: "/abc.jpg?size=big", want: ""},
+		{name: "fragment", size: "w342", path: "/abc.jpg#top", want: ""},
+		{name: "parent directory", size: "w342", path: "/../abc.jpg", want: ""},
+		{name: "dots in a name", size: "w342", path: "/a..b.jpg", want: ""},
+		{name: "backslash", size: "w342", path: `/a\b.jpg`, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tmdbImage(tt.size, tt.path); got != tt.want {
+				t.Errorf("tmdbImage(%q, %q) = %q, want %q", tt.size, tt.path, got, tt.want)
+			}
+		})
+	}
 }

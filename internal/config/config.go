@@ -32,6 +32,10 @@ type Config struct {
 	// surrounding space removed. Empty when unset: the server still starts,
 	// and TMDB features report that they aren't configured.
 	TMDBToken string
+	// TMDBBaseURL replaces TMDB's API root (WATCHT_TMDB_BASE_URL), for
+	// development and tests only: scripts/fake-tmdb serves recorded responses
+	// there. Empty means TMDB's own API. It has no trailing slash.
+	TMDBBaseURL string
 }
 
 const (
@@ -69,6 +73,13 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 	if v, ok := lookup("WATCHT_TMDB_API_KEY"); ok {
 		cfg.TMDBToken = strings.TrimSpace(v)
 	}
+	if v, ok := lookup("WATCHT_TMDB_BASE_URL"); ok && v != "" {
+		u, err := parseTMDBBaseURL(v)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.TMDBBaseURL = u
+	}
 
 	if _, _, err := net.SplitHostPort(cfg.Listen); err != nil {
 		return Config{}, fmt.Errorf("WATCHT_LISTEN %q is not a host:port address: %w", cfg.Listen, err)
@@ -86,7 +97,13 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 func parseBaseURL(v string) (*url.URL, error) {
 	u, err := url.Parse(v)
 	if err != nil {
-		return nil, fmt.Errorf("WATCHT_BASE_URL %q is not a valid URL: %w", v, err)
+		// Not quoted: an unparsed value may hold a password, and the error
+		// is logged. *url.Error repeats the whole value; keep only its reason.
+		reason := err
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			reason = ue.Err
+		}
+		return nil, fmt.Errorf("WATCHT_BASE_URL is not a valid URL: %w", reason)
 	}
 	switch {
 	// Checked first, and quoted redacted, so a password never reaches the message.
@@ -113,6 +130,57 @@ func parseBaseURL(v string) (*url.URL, error) {
 		host = strings.TrimSuffix(host, ":"+u.Port())
 	}
 	return &url.URL{Scheme: u.Scheme, Host: host}, nil
+}
+
+// parseTMDBBaseURL accepts an absolute http or https URL with an optional path
+// (TMDB's API is at .../3), and returns it without trailing slashes.
+func parseTMDBBaseURL(v string) (string, error) {
+	// Until the URL has parsed and been redacted, errors don't quote it: it
+	// may hold a password, and the error is logged.
+	if strings.TrimSpace(v) != v {
+		// url.Parse accepts a trailing space and escapes it into the path,
+		// which would turn every request into a 404.
+		return "", errors.New("WATCHT_TMDB_BASE_URL must not have leading or trailing spaces")
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		// *url.Error repeats the whole value; keep only its reason.
+		reason := err
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			reason = ue.Err
+		}
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL is not a valid URL: %w", reason)
+	}
+	switch {
+	// Checked first, and quoted redacted, so a password never reaches the message.
+	case u.User != nil:
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q must not include a username or password", u.Redacted())
+	case u.Scheme != "http" && u.Scheme != "https":
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q must start with http:// or https://", v)
+	case u.Hostname() == "":
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q must include a host, e.g. http://127.0.0.1:8098/3", v)
+	case strings.HasSuffix(u.Host, ":"):
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q has an empty port", v)
+	case u.Scheme == "http" && !isLoopbackHost(u.Hostname()):
+		// The TMDB token travels in a header, so plain http is only for a
+		// fake server on this machine.
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q must use https unless the host is loopback (localhost, 127.0.0.1, ::1)", v)
+	case u.ForceQuery || u.RawQuery != "":
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q must not have a query", v)
+	case strings.Contains(v, "#"):
+		// url.URL can't tell an empty fragment ("#") from none, so check the raw value.
+		return "", fmt.Errorf("WATCHT_TMDB_BASE_URL %q must not have a fragment", v)
+	}
+	return strings.TrimRight(u.String(), "/"), nil
+}
+
+// isLoopbackHost reports whether host is localhost or a loopback IP.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
 
 // parseTrustedProxies parses a comma-separated list of IPs and CIDRs. Blank
