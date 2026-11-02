@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRedirect } from '@sveltejs/kit';
+import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { load } from './+page';
 
 type LoadEvent = Parameters<typeof load>[0];
@@ -34,5 +34,16 @@ describe('admin users load', () => {
 				headers: { 'Content-Type': 'application/json' }
 			})) as unknown as typeof fetch;
 		expect(await load(event(true, fetchFn))).toEqual({ users });
+	});
+
+	it('shows the API error on the error page', async () => {
+		const fetchFn = (async () =>
+			new Response(JSON.stringify({ error: { code: 'internal', message: 'the server failed' } }), {
+				status: 500,
+				headers: { 'Content-Type': 'application/json' }
+			})) as unknown as typeof fetch;
+		const err = await Promise.resolve(load(event(true, fetchFn))).catch((e: unknown) => e);
+		expect(isHttpError(err, 500)).toBe(true);
+		expect(err).toMatchObject({ body: { message: 'the server failed' } });
 	});
 });

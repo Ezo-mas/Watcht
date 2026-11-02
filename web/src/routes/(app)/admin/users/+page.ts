@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { listUsers } from '#lib/api/users.js';
+import { loadError } from '#lib/load-error.js';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ fetch, depends, parent }) => {
@@ -9,5 +10,9 @@ export const load: PageLoad = async ({ fetch, depends, parent }) => {
 	if (!session.user?.is_admin) redirect(307, resolve('/(app)/settings'));
 	// invalidate('app:users') after creating, deleting, or resetting.
 	depends('app:users');
-	return { users: await listUsers(fetch) };
+	try {
+		return { users: await listUsers(fetch) };
+	} catch (e) {
+		loadError(e);
+	}
 };

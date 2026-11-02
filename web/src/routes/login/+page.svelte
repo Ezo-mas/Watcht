@@ -34,7 +34,11 @@
 		const next = safeNext(page.url.searchParams.get('next')).slice(1);
 		const session = { invalidate: ['app:session'] };
 		try {
-			await goto(resolve(next as PathnameWithSearchOrHash), session);
+			// Typed as a single pathname: with many routes, TypeScript can no
+			// longer match the whole PathnameWithSearchOrHash union against
+			// resolve()'s per-route signatures. The value is any path on this
+			// site, checked by safeNext above.
+			await goto(resolve(next as PathnameWithSearchOrHash as ''), session);
 		} catch {
 			// The page is gone (an old bookmark): go to the dashboard instead.
 			await goto(resolve('/(app)'), session);
