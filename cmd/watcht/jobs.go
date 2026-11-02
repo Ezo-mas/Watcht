@@ -31,13 +31,14 @@ const (
 
 // buildJobs registers handlers and schedules and builds the catalog without
 // starting recovery, the worker, or the scheduler. Start the queue only after
-// binding the server port, and call Wait before closing the database.
-func buildJobs(d *db.DB, logger *slog.Logger, authService *auth.Service, token string) (*jobs.Queue, httpapi.Catalog, httpapi.CatalogSearch) {
+// binding the server port, and call Wait before closing the database. An empty
+// tmdbBaseURL means TMDB's own API.
+func buildJobs(d *db.DB, logger *slog.Logger, authService *auth.Service, token, tmdbBaseURL string) (*jobs.Queue, httpapi.Catalog, httpapi.CatalogSearch) {
 	q := jobs.New(d, jobs.Options{Logger: logger})
 	var catalogAPI httpapi.Catalog
 	var searchAPI httpapi.CatalogSearch
 	if token != "" {
-		client := tmdb.New(d, tmdb.Options{Token: token, UserAgent: "watcht/" + version, Logger: logger})
+		client := tmdb.New(d, tmdb.Options{Token: token, BaseURL: tmdbBaseURL, UserAgent: "watcht/" + version, Logger: logger})
 		catalogService := catalog.New(d, client, catalog.Options{Jobs: q, Logger: logger})
 		q.Register(catalog.JobSyncShow, catalogService.HandleSyncShow)
 		q.Register(catalog.JobRefresh, func(ctx context.Context, _ json.RawMessage) error { return catalogService.Refresh(ctx) })

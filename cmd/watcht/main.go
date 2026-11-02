@@ -89,6 +89,9 @@ func serve(stderr io.Writer) int {
 	if cfg.TMDBToken == "" {
 		logger.Info("TMDB is not configured; set WATCHT_TMDB_API_KEY")
 	}
+	if cfg.TMDBBaseURL != "" {
+		logger.Warn("TMDB requests go to WATCHT_TMDB_BASE_URL; for development only", "url", cfg.TMDBBaseURL)
+	}
 	if len(cfg.TrustedProxies) > 0 && (cfg.BaseURL == nil || cfg.BaseURL.Scheme != "https") {
 		// Behind a TLS-terminating proxy, the scheme is only known from its
 		// X-Forwarded-Proto header; if it doesn't send one, cookies lose Secure.
@@ -101,7 +104,7 @@ func serve(stderr io.Writer) int {
 	}
 
 	authService := auth.New(database, auth.Options{Logger: logger})
-	queue, catalogService, tmdbClient := buildJobs(database, logger, authService, cfg.TMDBToken)
+	queue, catalogService, tmdbClient := buildJobs(database, logger, authService, cfg.TMDBToken, cfg.TMDBBaseURL)
 	deps := httpapi.Deps{
 		Logger:         logger,
 		WebUI:          webui.Handler(webui.Dist()),

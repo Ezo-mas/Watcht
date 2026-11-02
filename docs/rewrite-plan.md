@@ -211,7 +211,7 @@ All provider HTTP calls go through one client with timeouts, rate limiting, and 
 
 ### Attribution
 
-TMDB's terms require attribution. The app footer and an About page show the TMDB logo with the notice "This product uses the TMDB API but is not endorsed or certified by TMDB." The README carries the same notice. Each self-hoster uses their own TMDB API key, and the setup docs explain how to get one. Other providers (MDBList) get the same treatment when they are added, following their terms.
+TMDB's terms require attribution. The About page shows the TMDB logo with the notice "This product uses the TMDB API but is not endorsed or certified by TMDB.", and the footer of every page carries a short credit linking to TMDB, as Letterboxd does (maintainer decision, 2026-11-02). The README carries the full notice. Each self-hoster uses their own TMDB API key, and the setup docs explain how to get one. Other providers (MDBList) get the same treatment when they are added, following their terms.
 
 ## HTTP API
 
@@ -268,6 +268,7 @@ Docker is the primary distribution, since it's what Unraid, TrueNAS, Synology, P
 | `WATCHT_LISTEN` | `:8080` | Listen address |
 | `WATCHT_BASE_URL` | | Public URL (`scheme://host[:port]`, no path). Trusted by the cross-origin check, so set it when a proxy rewrites `Host`; `https` makes the session cookie `Secure`. Needed for OIDC later |
 | `WATCHT_TMDB_API_KEY` | | TMDB's API Read Access Token (the v4 token, sent as a Bearer header). The server starts without it, but search and metadata need it |
+| `WATCHT_TMDB_BASE_URL` | | Development and tests only: send TMDB requests to another server, such as `make fake-tmdb`. Must be https unless the host is loopback, since the token goes with every request. Startup logs a warning when it's set |
 | `MDBLIST_API_KEY` | | Optional |
 | `WATCHT_TRUSTED_PROXIES` | | Comma-separated IPs or CIDRs of reverse proxies. Only their `X-Forwarded-For` (client IP for the login limit) and `X-Forwarded-Proto` (`Secure` cookies) are believed |
 | `WATCHT_IMAGE_CACHE` | `false` | Proxy and cache TMDB images locally |
@@ -336,7 +337,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - Tables: `movies`, `shows`, `seasons`, `episodes`, `provider_cache`, `jobs`.
 - TMDB provider with caching and rate limiting; search and detail endpoints.
 - Upsert movies, shows, seasons, and episodes by external ID, with episodes anchored on TMDB episode ID.
-- TMDB attribution in the footer and About page; optional image cache.
+- TMDB attribution: logo and notice on the About page, a short credit in the footer; optional image cache.
 - Job worker and scheduler, with a metadata refresh job, and a job that deletes expired sessions (moved from login, where M2 left it).
 - **Done when:** you can search for a title and open its detail page.
 - **Status: in progress**, in slices: (1) the `jobs` table, worker, and scheduler, with expired-session cleanup moved into a job; (2) the `provider_cache` table and the shared provider HTTP client; (3) the TMDB adapter, tested against fixtures; (4) the catalog tables and upserts, and the metadata refresh job (split into 4a and 4b below); (5) search and detail endpoints; (6) the SPA's search and detail pages and the TMDB attribution. The optional image cache is a later slice or moves to M6.
@@ -407,6 +408,18 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - TMDB 404s aren't cached, so each request for a missing ID costs a TMDB request.
     - A rejected token (TMDB's 401) is a 502 that says to try again later, and every request logs an error. A separate code or a hint to check `WATCHT_TMDB_API_KEY` can come with the admin settings page.
     - The GET routes write (fetching and storing a title, marking it viewed), and GETs pass the cross-origin check, so another site can make a signed-in browser store a title. No user data changes.
+  - Slice 6 is built (branch `m3-pages`, not merged): the SPA's search overlay and `/search`, `/movies/[id]`, `/shows/[id]` with seasons and episodes, `/about`, the footer with a TMDB credit, and `DESIGN.md`. Decided by the maintainer (2026-11-02):
+    - The API returns image URLs (`poster_url` w342, `backdrop_url` w1280, `still_url` w300) next to the TMDB paths, built by one helper in `internal/httpapi` so the optional image cache only changes that helper. The frontend never builds TMDB URLs.
+    - Visual checks use the recorded fixtures, not live TMDB: `scripts/fake-tmdb` (`make fake-tmdb`) and `WATCHT_TMDB_BASE_URL` (development only, https unless loopback), always with a throwaway data directory, since the fake's cache rows and not-found marks would carry over into real use. `make dev` still talks to TMDB unless you set the variable yourself.
+    - Look: the classic Trakt layout, in the "Woodland Fire" palette (pine and sage with a burnt orange accent), with a derived light theme. `DESIGN.md` at the repository root holds the system that M4's pages follow.
+    - Navigation: a top nav on desktop, no sidebar. Settings, Users, and About are in the user menu. On phones, navigation and search go at the bottom (a tab bar: Dashboard, Search, History, Watchlist, More) and page controls stay at the top, as modern phone apps do. The tab bar is built in M4, once there's more than one destination; until then phones get a slim header with search and menu buttons.
+    - Search is an overlay over the blurred page (opened from the header or `/`), with a full-page `/search?q=` for links and Back.
+    - A show's seasons and episodes are on its page, picked with `?season=N`. A season whose episodes aren't fetched yet polls every 3 seconds, for up to 2 minutes.
+    - The TMDB logo is TMDB's official "Alt short" SVG, unedited, drawn as a mask in pure black (light theme) or white (dark theme), which TMDB's rules allow. It and the full notice are on the About page only; the footer has a short "data from TMDB" credit with a link, like Letterboxd. This footer is a placeholder: a full one, with all its links and logos, comes later.
+  - Decisions made while building it:
+    - The title hero is dark in both themes, so artwork and the title over it look the same. The right-hand action column of the classic layout is kept for M4's tracking actions; until then the main column takes the width, with no buttons that do nothing.
+    - Specials are listed last in the season picker, as on Trakt. Search results don't preload on hover, since opening a title fetches and stores it.
+    - About doesn't show the version yet: no endpoint returns it.
 
 ### M4: Tracking parity
 
@@ -414,6 +427,7 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - Watch events with source and dedupe, episode and season marking, history feed.
 - Watchlist, ratings, show progress.
 - Dashboard with widgets and saved block order, with day-based stats in the user's time zone.
+- The phone bottom tab bar from `DESIGN.md` (Dashboard, Search, History, Watchlist, More).
 - Local library search with FTS5.
 - **Done when:** everything the legacy app could do works in the new one.
 

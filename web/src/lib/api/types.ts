@@ -47,6 +47,8 @@ export interface SearchResult {
 	overview: string;
 	date: string;
 	poster_path: string;
+	/** 342 px wide, or "" when TMDB has no image. */
+	poster_url: string;
 	vote_average: number;
 }
 
@@ -72,7 +74,11 @@ export interface Movie {
 	tagline: string;
 	status: string;
 	poster_path: string;
+	/** 342 px wide, or "" when TMDB has no image. */
+	poster_url: string;
 	backdrop_path: string;
+	/** 1280 px wide, or "" when TMDB has no image. */
+	backdrop_url: string;
 	release_date: string;
 	runtime: number;
 	genres: Genre[];
@@ -86,6 +92,8 @@ export interface Season {
 	name: string;
 	overview: string;
 	poster_path: string;
+	/** 342 px wide, or "" when TMDB has no image. */
+	poster_url: string;
 	air_date: string;
 	episode_count: number;
 	episodes_pending: boolean;
@@ -102,7 +110,11 @@ export interface Show {
 	tagline: string;
 	status: string;
 	poster_path: string;
+	/** 342 px wide, or "" when TMDB has no image. */
+	poster_url: string;
 	backdrop_path: string;
+	/** 1280 px wide, or "" when TMDB has no image. */
+	backdrop_url: string;
 	first_air_date: string;
 	last_air_date: string;
 	in_production: boolean;
@@ -119,6 +131,8 @@ export interface Episode {
 	name: string;
 	overview: string;
 	still_path: string;
+	/** 300 px wide, or "" when TMDB has no image. */
+	still_url: string;
 	air_date: string;
 	runtime: number;
 	vote_average: number;

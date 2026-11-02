@@ -9,3 +9,12 @@ export function errorMessage(e: unknown, messages: Partial<Record<string, string
 	if (e instanceof ApiError) return messages[e.code] ?? e.message;
 	return 'Something went wrong.';
 }
+
+/** Messages for the catalog endpoints' error codes (search and title pages). */
+export const catalogMessages: Partial<Record<string, string>> = {
+	tmdb_not_configured:
+		"watcht can't look up titles yet: an admin needs to set WATCHT_TMDB_API_KEY on the server and restart it.",
+	provider_unavailable: "TMDB didn't answer. Try again in a moment.",
+	not_found: "TMDB doesn't have this title.",
+	invalid_query: 'Search for 100 characters or fewer.'
+};

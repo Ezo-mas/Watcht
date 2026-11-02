@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api/client';
-import { errorMessage } from './errors';
+import { catalogMessages, errorMessage } from './errors';
 
 describe('errorMessage', () => {
 	const wrong = new ApiError(400, 'invalid_credentials', 'the password is wrong');
@@ -18,5 +18,17 @@ describe('errorMessage', () => {
 
 	it('gives a generic message for anything that is not an ApiError', () => {
 		expect(errorMessage(new TypeError('x is undefined'))).toBe('Something went wrong.');
+	});
+});
+
+describe('catalogMessages', () => {
+	it('explains a missing TMDB key', () => {
+		const e = new ApiError(503, 'tmdb_not_configured', 'ask the admin to set WATCHT_TMDB_API_KEY');
+		expect(errorMessage(e, catalogMessages)).toContain('WATCHT_TMDB_API_KEY');
+	});
+
+	it('says TMDB is unreachable for provider_unavailable', () => {
+		const e = new ApiError(502, 'provider_unavailable', 'metadata provider is unavailable');
+		expect(errorMessage(e, catalogMessages)).toBe("TMDB didn't answer. Try again in a moment.");
 	});
 });

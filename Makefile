@@ -35,7 +35,7 @@ DATA_DIR ?= ./data
 
 IMAGE ?= watcht:local
 
-.PHONY: help build build-go run dev smoke docker docker-smoke generate generate-check tidy-check \
+.PHONY: help build build-go run dev fake-tmdb smoke docker docker-smoke generate generate-check tidy-check \
 	test test-go test-web lint lint-go lint-web check check-go check-web web-install web-build \
 	node-version clean
 
@@ -74,6 +74,9 @@ dev: web-install ## Go server on :$(DEV_API_PORT) and Vite on :5173 (open :5173)
 	./bin/watcht-dev healthcheck && kill -0 $$pid 2>/dev/null || \
 		{ echo "The Go server didn't start on :$(DEV_API_PORT) (port in use? set DEV_API_PORT)." >&2; exit 1; }; \
 	cd web && WATCHT_DEV_API=http://127.0.0.1:$(DEV_API_PORT) pnpm dev
+
+fake-tmdb: ## Serve recorded TMDB responses on 127.0.0.1:8098 (see scripts/fake-tmdb)
+	go run ./scripts/fake-tmdb
 
 # --- Checks ---
 

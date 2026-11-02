@@ -10,46 +10,70 @@
 		system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue',
 		Arial, sans-serif;
 
-	/* Page background, raised panels, and form fields. */
-	--color-canvas: #eef1f5;
-	--color-surface: #ffffff;
-	--color-field: #f8f9fb;
+	/*
+	 * "Woodland Fire": pine and sage neutrals with a burnt orange accent.
+	 * DESIGN.md lists every token with its contrast; keep src/error.html in
+	 * step.
+	 */
+
+	/* Page background, panels, quiet fills (badges, placeholders), and form fields. */
+	--color-canvas: #eef2ec;
+	--color-surface: #fbfcfa;
+	--color-raised: #e2e9e0;
+	--color-field: #f5f8f3;
 	/* Hairlines between areas; field borders (3:1 against surface). */
-	--color-line: #d5dbe4;
-	--color-line-strong: #7d889a;
-	/* Text: primary and secondary (AA on canvas and surface). */
-	--color-ink: #151b26;
-	--color-muted: #535e70;
-	/* Amber accent: fills, text on fills, accent-coloured text, focus rings. */
-	--color-accent: #e3961f;
-	--color-accent-hover: #d08614;
-	--color-on-accent: #1c1204;
-	--color-accent-text: #8f5300;
-	--color-focus: #a35d00;
+	--color-line: #d2dccf;
+	--color-line-strong: #76877a;
+	/* Text: primary and secondary (AA on canvas, surface, and raised). */
+	--color-ink: #14201a;
+	--color-muted: #4e6054;
+	/* Burnt orange accent: fills, text on fills, accent-coloured text, focus rings. */
+	--color-accent: #d4692c;
+	--color-accent-hover: #e0834e;
+	--color-on-accent: #1e0d03;
+	--color-accent-text: #9c4313;
+	--color-focus: #9c4313;
 	/* Destructive actions and errors; text on a danger fill. */
 	--color-danger: #b42318;
 	--color-on-danger: #ffffff;
 	/* Success notes (AA on surface and on its 10% tint). */
-	--color-ok: #146c2e;
+	--color-ok: #3d6b2c;
+	/* Tracking states (M4): watched (sage) and on the watchlist (3:1 on surface). */
+	--color-watched: #4f7a3c;
+	--color-listed: #2b6f86;
+	/* TMDB's logo: their rules allow pure black or white (or brand colours). */
+	--color-tmdb-logo: #000000;
+	/*
+	 * The title hero is a dark "screen" in both themes, so artwork and the
+	 * title over it look the same either way. Not swapped below.
+	 */
+	--color-screen: #0e1712;
+	--color-on-screen: #f1f5f1;
+	--color-on-screen-muted: #c3d0c5;
+	--color-on-screen-accent: #eb8f55;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--color-canvas: #131a24;
-		--color-surface: #1a2230;
-		--color-field: #121923;
-		--color-line: #2b3546;
-		--color-line-strong: #6b788e;
-		--color-ink: #e7eaf0;
-		--color-muted: #9da7b9;
-		--color-accent: #f0a73a;
-		--color-accent-hover: #f6b95e;
-		--color-on-accent: #1c1204;
-		--color-accent-text: #f3b555;
-		--color-focus: #f0a73a;
+		--color-canvas: #0e1712;
+		--color-surface: #142019;
+		--color-raised: #1b2a21;
+		--color-field: #0b130e;
+		--color-line: #2a3d31;
+		--color-line-strong: #62786a;
+		--color-ink: #e7eee8;
+		--color-muted: #9cae9f;
+		--color-accent: #e07b3c;
+		--color-accent-hover: #ea925a;
+		--color-on-accent: #1e0d03;
+		--color-accent-text: #eb8f55;
+		--color-focus: #eb8f55;
 		--color-danger: #ff8f80;
 		--color-on-danger: #2a0d09;
-		--color-ok: #6cc98a;
+		--color-ok: #8fb07c;
+		--color-watched: #8fb07c;
+		--color-listed: #8cc7d9;
+		--color-tmdb-logo: #ffffff;
 	}
 }
 
@@ -62,6 +86,14 @@
 		background-color: var(--color-canvas);
 		color: var(--color-ink);
 		-webkit-text-size-adjust: 100%;
+		/* In-page links (a title's section list) land below the sticky header. */
+		scroll-padding-top: 4rem;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		html {
+			scroll-behavior: smooth;
+		}
 	}
 
 	/* One focus ring for every control, shown for keyboard focus. */
@@ -78,5 +110,10 @@
 			animation-iteration-count: 1 !important;
 			transition-duration: 0.01ms !important;
 		}
+	}
+
+	/* A modal dialog (the search overlay) holds the page still behind it. */
+	html:has(dialog[open]) {
+		overflow: hidden;
 	}
 }

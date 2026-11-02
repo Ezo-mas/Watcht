@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +43,7 @@ func TestProviderCachePruneJobRuns(t *testing.T) {
 
 	jobCtx, stop := context.WithCancel(ctx)
 	cheap := auth.Argon2Params{Memory: 64, Time: 1, Threads: 1}
-	q, _, _ := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{Argon2: cheap}), "")
+	q, _, _ := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{Argon2: cheap}), "", "")
 	if err := q.Start(jobCtx); err != nil {
 		t.Fatalf("start jobs: %v", err)
 	}
@@ -77,7 +79,7 @@ func TestCatalogJobsWiring(t *testing.T) {
 		t.Run(map[bool]string{false: "without token", true: "with token"}[token != ""], func(t *testing.T) {
 			d := dbtest.New(t)
 			ctx, stop := context.WithCancel(context.Background())
-			q, service, client := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{}), token)
+			q, service, client := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{}), token, "")
 			var beforeStart int
 			if err := d.Read.QueryRowContext(ctx, "SELECT count(*) FROM jobs").Scan(&beforeStart); err != nil {
 				t.Fatal(err)
@@ -166,5 +168,29 @@ func TestCatalogJobsWiring(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+// TestTMDBBaseURLReachesClient checks that WATCHT_TMDB_BASE_URL decides where
+// TMDB requests go. A local server stands in for TMDB here.
+func TestTMDBBaseURLReachesClient(t *testing.T) {
+	requests := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case requests <- r.URL.RequestURI():
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"page":1,"total_pages":0,"total_results":0,"results":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	d := dbtest.New(t)
+	_, _, search := buildJobs(d, slog.New(slog.DiscardHandler), auth.New(d, auth.Options{}), "test-token", srv.URL+"/3")
+	if _, err := search.Search(context.Background(), "matrix", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-requests; got != "/3/search/multi?include_adult=false&page=1&query=matrix" {
+		t.Fatalf("TMDB request = %q", got)
 	}
 }

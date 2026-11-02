@@ -55,7 +55,11 @@ install Go tools globally.
 - **Provider fixtures** live in `testdata/` next to the package. They are
   recorded from real responses, trimmed, and stripped of personal data.
   Refresh a fixture by re-recording it, never by hand-editing it to make a
-  test pass.
+  test pass. `make fake-tmdb` serves the TMDB fixtures on 127.0.0.1:8098
+  for manual and visual checks; point the server at it with
+  `WATCHT_TMDB_BASE_URL=http://127.0.0.1:8098/3` (see the frontend guide's
+  "Visual checks"). Its routing table is tested, so renaming a fixture
+  fails `scripts/fake-tmdb`'s tests.
 - **No network.** A test that needs the internet is a bug.
 
 ## Caveats
