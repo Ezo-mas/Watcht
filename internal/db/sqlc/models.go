@@ -151,3 +151,16 @@ type User struct {
 	PasswordHash sql.NullString
 	IsAdmin      int64
 }
+
+type WatchEvent struct {
+	ID            int64
+	UserID        int64
+	MovieID       sql.NullInt64
+	EpisodeID     sql.NullInt64
+	WatchedAt     string
+	Source        string
+	SourceEventID sql.NullString
+	Payload       sql.NullString
+	MergedIntoID  sql.NullInt64
+	CreatedAt     string
+}
