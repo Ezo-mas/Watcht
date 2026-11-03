@@ -54,7 +54,12 @@ themselves. `catalog` and `tracking` decide what gets stored.
    idempotency (unique user + source + source_event_id), and dedupe (same
    user and item within the window counts once; later events are recorded
    as merged, not dropped). Unplaying an item on a media server doesn't
-   delete history.
+   delete history. A merged row's `merged_into_id` points at the nearest
+   kept watch, never at another merged row, and only Go enforces that, so
+   never write `watch_events` outside `tracking`. Removing a watch deletes
+   the kept row and, by cascade, everything merged into it. Count watches
+   with `merged_into_id IS NULL`. The completion rule arrives with webhooks
+   in M7 and belongs in `tracking.Record`, not in a handler.
 7. **Progress and stats are derived** from `watch_events`, `episodes`, and
    `seasons` by query. There are no progress tables to keep in sync.
 8. **Jobs.** Webhook handlers validate, store the raw event, enqueue a job,
