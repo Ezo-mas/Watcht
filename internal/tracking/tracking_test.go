@@ -114,8 +114,8 @@ func TestRecordStoresEveryField(t *testing.T) {
 		UserID: e.user, EpisodeID: e.episode, WatchedAt: at,
 		Source: SourceJellyfin, SourceEventID: "jf-1", Payload: json.RawMessage(`{"a":1}`),
 	})
-	if res.MergedInto != 0 || res.Duplicate {
-		t.Errorf("Result = %+v, want a kept new watch", res)
+	if res.MergedInto != 0 || res.Duplicate || !res.WatchedAt.Equal(time.Date(2026, 11, 3, 16, 30, 15, 0, time.UTC)) {
+		t.Errorf("Result = %+v, want a kept new watch at 16:30:15 UTC", res)
 	}
 	var got sqlc.WatchEvent
 	err := e.d.Read.QueryRow(`SELECT id, user_id, movie_id, episode_id, watched_at, source,
@@ -316,7 +316,7 @@ func TestSourceEventIsIdempotent(t *testing.T) {
 	ev.WatchedAt = testNow.Add(-10 * time.Hour)
 	ev.Payload = json.RawMessage(`{}`)
 	again := e.record(t, ev)
-	if !again.Duplicate || again.ID != first.ID || again.MergedInto != 0 {
+	if !again.Duplicate || again.ID != first.ID || again.MergedInto != 0 || !again.WatchedAt.Equal(first.WatchedAt) {
 		t.Errorf("resend Result = %+v, want duplicate of %d", again, first.ID)
 	}
 	if n := e.count(t); n != 1 {
@@ -348,17 +348,18 @@ func TestRecordRejectsInvalidEvents(t *testing.T) {
 	e := newEnv(t)
 	at := testNow.Add(-time.Hour)
 	tests := map[string]Event{
-		"no user":              {MovieID: e.movie, WatchedAt: at, Source: SourceManual},
-		"no item":              {UserID: e.user, WatchedAt: at, Source: SourceManual},
-		"two items":            {UserID: e.user, MovieID: e.movie, EpisodeID: e.episode, WatchedAt: at, Source: SourceManual},
-		"negative item":        {UserID: e.user, MovieID: -1, WatchedAt: at, Source: SourceManual},
-		"no time":              {UserID: e.user, MovieID: e.movie, Source: SourceManual},
-		"future":               {UserID: e.user, MovieID: e.movie, WatchedAt: testNow.Add(5*time.Minute + time.Second), Source: SourceManual},
-		"year 0":               {UserID: e.user, MovieID: e.movie, WatchedAt: time.Date(0, 12, 31, 0, 0, 0, 0, time.UTC), Source: SourceManual},
-		"unknown source":       {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: "trakt"},
-		"manual with event ID": {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceManual, SourceEventID: "x"},
-		"import without ID":    {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceTraktImport},
-		"bad payload":          {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourcePlex, SourceEventID: "x", Payload: json.RawMessage(`{`)},
+		"no user":               {MovieID: e.movie, WatchedAt: at, Source: SourceManual},
+		"no item":               {UserID: e.user, WatchedAt: at, Source: SourceManual},
+		"two items":             {UserID: e.user, MovieID: e.movie, EpisodeID: e.episode, WatchedAt: at, Source: SourceManual},
+		"negative item":         {UserID: e.user, MovieID: -1, WatchedAt: at, Source: SourceManual},
+		"no time":               {UserID: e.user, MovieID: e.movie, Source: SourceManual},
+		"zero after truncation": {UserID: e.user, MovieID: e.movie, WatchedAt: time.Time{}.Add(500 * time.Millisecond), Source: SourceManual},
+		"future":                {UserID: e.user, MovieID: e.movie, WatchedAt: testNow.Add(5*time.Minute + time.Second), Source: SourceManual},
+		"year 0":                {UserID: e.user, MovieID: e.movie, WatchedAt: time.Date(0, 12, 31, 0, 0, 0, 0, time.UTC), Source: SourceManual},
+		"unknown source":        {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: "trakt"},
+		"manual with event ID":  {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceManual, SourceEventID: "x"},
+		"import without ID":     {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceTraktImport},
+		"bad payload":           {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourcePlex, SourceEventID: "x", Payload: json.RawMessage(`{`)},
 	}
 	for name, ev := range tests {
 		t.Run(name, func(t *testing.T) {

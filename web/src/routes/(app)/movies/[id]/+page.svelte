@@ -3,6 +3,7 @@
 	import TitlePage, { type HeroChip } from '#lib/components/TitlePage.svelte';
 	import { formatDay } from '#lib/format.js';
 	import { formatRuntime, formatScore, languageName, yearOf } from '#lib/media.js';
+	import MovieActions from './MovieActions.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -66,6 +67,10 @@
 >
 	{#snippet facts()}
 		<Facts facts={factsList} />
+	{/snippet}
+
+	{#snippet actions()}
+		<MovieActions {movie} watches={data.watches} watchesError={data.watchesError} />
 	{/snippet}
 
 	<div class="mt-5 max-w-[72ch]">

@@ -48,9 +48,12 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
 - **Attribution.** TMDB's full notice and logo on the About page
   (`TmdbAttribution`) and the short TMDB credit in the footer
   (`AppFooter`) must stay; see DESIGN.md.
-- **Dates** come from the API as UTC RFC 3339. Format them with
-  `formatDate` (`#lib/format.js`), which will use the user's time zone
-  setting once M4 adds it (UTC until then), never the browser's zone.
+- **Dates** come from the API as UTC RFC 3339. Format calendar dates
+  (release and air dates) with `formatDate`/`formatDay`
+  (`#lib/format.js`). Watch times use `formatDateTime`, `formatTime`, and
+  `dayKey` for grouping by day, in the browser's time zone until M4 slice 4
+  adds the user's setting (maintainer decision, 2026-11-03); pass a zone
+  rather than formatting times anywhere else.
 
 ## Commands (from `web/`)
 
@@ -135,7 +138,14 @@ contrast. `src/error.html` repeats them inline because SvelteKit uses it
 when the app itself can't start; keep the two in step. Shared pieces live
 in `src/lib/components/`: forms and pages (`Button`, `Field`, `CardPage`,
 `Panel`, `Notice`, `InlineConfirm`, `Wordmark`, `Kbd`), catalog pieces
-(`Artwork`, `Badge`, `Facts`, `TitlePage`, `EpisodeRow`), search
+(`Artwork`, `Badge`, `Facts`, `TitlePage`, `EpisodeRow`), tracking
+(`MarkButton` with its `WhenMenu`, whose options are `WhenChoices`;
+`PosterCard`, the poster, action bar, and caption card that `/history`
+uses and the watchlist and dashboard will reuse; `WatchedCheck`, the
+card's watched check with its tooltip and remove-or-add menu, built on
+the Popover API and placed with `placeNear` from `#lib/anchor.js`;
+`/history`'s own placeholder toolbar is `HistoryToolbar` next to its page),
+search
 (`SearchView`, `SearchResultRow`, `SearchOverlay`), and the app frame
 (`UserMenu`, `AppFooter`, `TmdbAttribution`); reuse them before adding
 new ones. Destructive actions use `InlineConfirm`, never

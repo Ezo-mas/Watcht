@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isHttpError } from '@sveltejs/kit';
 import { ApiError } from './api/client';
-import { catalogLoadError, loadError } from './load-error';
+import { catalogLoadError, loadError, optionalLoad } from './load-error';
 
 const thrown = (f: () => void) => {
 	try {
@@ -43,5 +43,16 @@ describe('catalogLoadError', () => {
 			catalogLoadError(new ApiError(404, 'not_found', 'x'), 'TMDB has no movie with ID 9.')
 		);
 		expect(err).toMatchObject({ status: 404, body: { message: 'TMDB has no movie with ID 9.' } });
+	});
+});
+
+describe('optionalLoad', () => {
+	it('gives the value', async () => {
+		expect(await optionalLoad(Promise.resolve([1]))).toEqual({ value: [1], error: '' });
+	});
+
+	it("gives null and the API's message instead of throwing", async () => {
+		const failed = Promise.reject(new ApiError(500, 'internal', 'database is locked'));
+		expect(await optionalLoad(failed)).toEqual({ value: null, error: 'database is locked' });
 	});
 });

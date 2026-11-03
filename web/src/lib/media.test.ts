@@ -8,6 +8,7 @@ import {
 	parseId,
 	parseSeasonParam,
 	seasonLabel,
+	tmdbPercent,
 	yearOf
 } from './media';
 
@@ -25,15 +26,22 @@ describe('media helpers', () => {
 	});
 
 	it('builds episode codes', () => {
-		expect(episodeCode(1, 1)).toBe('1x01');
-		expect(episodeCode(0, 12)).toBe('0x12');
-		expect(episodeCode(3, 110)).toBe('3x110');
+		expect(episodeCode(1, 1)).toBe('S01E01');
+		expect(episodeCode(0, 12)).toBe('S00E12');
+		expect(episodeCode(3, 110)).toBe('S03E110');
 	});
 
 	it('shows a score only when there are votes', () => {
 		expect(formatScore(8.27, 120)).toBe('8.3');
 		expect(formatScore(8, 0)).toBe('');
 		expect(formatScore(0, 10)).toBe('');
+	});
+
+	it('turns a vote average into a percentage, none without votes', () => {
+		expect(tmdbPercent(6.66)).toBe('67%');
+		expect(tmdbPercent(10)).toBe('100%');
+		expect(tmdbPercent(8.24)).toBe('82%');
+		expect(tmdbPercent(0)).toBe('');
 	});
 
 	it('names languages', () => {

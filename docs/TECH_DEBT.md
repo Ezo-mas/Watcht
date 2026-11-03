@@ -25,3 +25,10 @@ Entry format:
 - **Impact:** Metadata stops refreshing for every title until the code or TMDB's data changes. The job fails each hour and logs the error.
 - **Evidence:** Found by the re-review of M3 slice 4b by reading `Refresh` against `ListRefreshMovies`' ordering; follows from the stop-on-error rule in the slice brief.
 - **Logged:** 2026-10-31
+
+### A season that never syncs blocks marking its whole show
+- **Where:** `internal/tracking` (`MarkShow`), `internal/catalog` (`SyncShow`, `Refresh`)
+- **Problem:** `MarkShow` refuses with `episodes_pending` until every regular season's episodes are stored, so it never marks part of a show. A season whose sync keeps failing with an error other than 404 (the job runs out of attempts, or its data keeps failing a CHECK) stays unfetched, and is only retried by `Refresh` while the show is recently viewed.
+- **Impact:** "Mark show watched" stays refused for that show, with a message to reload. Marking season by season still works.
+- **Evidence:** Found by the re-review of M4 slice 2, by reading `ShowEpisodesPending` against the sync job's retry rules.
+- **Logged:** 2026-11-03

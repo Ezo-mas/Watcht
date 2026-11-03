@@ -18,6 +18,13 @@
 		!page.error && (page.route.id === '/(app)/movies/[id]' || page.route.id === '/(app)/shows/[id]')
 	);
 
+	const navLinks = [{ href: resolve('/(app)/history'), label: 'History' }];
+
+	function current(href: string): 'page' | undefined {
+		const path = page.url.pathname;
+		return path === href || path.startsWith(href + '/') ? 'page' : undefined;
+	}
+
 	// "/" opens search from anywhere, except while typing. On the search
 	// page it goes to that page's own box instead.
 	function onkeydown(event: KeyboardEvent) {
@@ -43,17 +50,29 @@
 				<Wordmark />
 			</a>
 			<!--
-				History and Watchlist (M4) join Search here, as links with the
-				wordmark's accent bar on the header's bottom edge for the current
-				page. On a phone they move into the menu.
+				Page links (History; Watchlist joins in M4), with the wordmark's
+				accent bar on the header's bottom edge for the current page. On a
+				phone they're in the menu until the tab bar arrives.
 			-->
-			<nav aria-label="Main" class="flex flex-1 items-center justify-end gap-1">
+			<nav aria-label="Main" class="flex flex-1 items-center gap-1 self-stretch">
+				<ul class="flex items-center self-stretch max-sm:hidden">
+					{#each navLinks as link (link.href)}
+						<li class="flex self-stretch">
+							<a
+								href={link.href}
+								aria-current={current(link.href)}
+								class="relative flex items-center px-2.5 text-sm font-medium text-muted transition-colors after:absolute after:inset-x-2.5 after:-bottom-px after:h-0.5 after:rounded-full hover:text-ink focus-visible:-outline-offset-2 aria-[current=page]:text-ink aria-[current=page]:after:bg-accent"
+								>{link.label}</a
+							>
+						</li>
+					{/each}
+				</ul>
 				<button
 					type="button"
 					aria-haspopup="dialog"
 					aria-keyshortcuts="/"
 					onclick={() => (searchOverlay.open = true)}
-					class="flex h-8 items-center gap-2 rounded-md text-sm text-muted transition-colors hover:text-ink max-sm:size-10 max-sm:justify-center sm:w-56 sm:border sm:border-line sm:bg-field sm:px-2.5 sm:hover:border-line-strong lg:w-72"
+					class="ml-auto flex h-8 items-center gap-2 rounded-md text-sm text-muted transition-colors hover:text-ink max-sm:size-10 max-sm:justify-center sm:w-56 sm:border sm:border-line sm:bg-field sm:px-2.5 sm:hover:border-line-strong lg:w-72"
 				>
 					<svg
 						aria-hidden="true"

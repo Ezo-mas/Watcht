@@ -21,8 +21,9 @@ import (
 type Deps struct {
 	Logger *slog.Logger
 	// Catalog and Search are nil when TMDB is not configured.
-	Catalog Catalog
-	Search  CatalogSearch
+	Catalog  Catalog
+	Search   CatalogSearch
+	Tracking Tracking
 	// WebUI serves the single-page app for every path that isn't an API
 	// route or the health check.
 	WebUI http.Handler
@@ -70,6 +71,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 	authAPI.registerAccounts(api)
 	authAPI.registerTokens(api)
 	(&catalogHandlers{auth: authAPI, catalog: d.Catalog, search: d.Search}).register(api)
+	(&trackingHandlers{auth: authAPI, tracking: d.Tracking}).register(api)
 
 	mux := http.NewServeMux()
 

@@ -15,12 +15,42 @@ const answer = (status: number, body: unknown) =>
 			headers: { 'Content-Type': 'application/json' }
 		})) as unknown as typeof fetch;
 
+/** Answers each request by its path. */
+const byPath = (bodies: Record<string, unknown>) =>
+	(async (input: RequestInfo | URL) => {
+		const path = String(input);
+		if (!(path in bodies)) return new Response('{}', { status: 500 });
+		return new Response(JSON.stringify(bodies[path]), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}) as unknown as typeof fetch;
+
 const fail = async (p: unknown) => Promise.resolve(p).catch((e: unknown) => e);
 
 describe('show page load', () => {
-	it('loads the show by TMDB ID', async () => {
+	it('loads the show and its watched episodes by TMDB ID', async () => {
 		const show = { tmdb_id: 1396, name: 'Breaking Bad', seasons: [] };
-		expect(await load(event('1396', answer(200, { show })))).toEqual({ show });
+		const episodes = [{ tmdb_id: 62085, plays: 2, last_watched_at: '2026-11-03T18:14:00Z' }];
+		const fetchFn = byPath({
+			'/api/v1/shows/1396': { show },
+			'/api/v1/shows/1396/watched': { episodes }
+		});
+		expect(await load(event('1396', fetchFn))).toEqual({
+			show,
+			watched: episodes,
+			watchedError: ''
+		});
+	});
+
+	it("still shows the show when the watched episodes can't be loaded", async () => {
+		const show = { tmdb_id: 1396, name: 'Breaking Bad', seasons: [] };
+		const fetchFn = byPath({ '/api/v1/shows/1396': { show } });
+		expect(await load(event('1396', fetchFn))).toMatchObject({
+			show,
+			watched: null,
+			watchedError: expect.any(String)
+		});
 	});
 
 	it('is a 404 for an ID that is not a number, without asking the API', async () => {

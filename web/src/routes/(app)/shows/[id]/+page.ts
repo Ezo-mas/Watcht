@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { getShow } from '#lib/api/catalog.js';
-import { catalogLoadError } from '#lib/load-error.js';
+import { showWatched } from '#lib/api/tracking.js';
+import { catalogLoadError, optionalLoad } from '#lib/load-error.js';
 import { parseId } from '#lib/media.js';
 import type { PageLoad } from './$types';
 
@@ -11,7 +12,14 @@ export const load: PageLoad = async ({ params, fetch, depends }) => {
 	const id = parseId(params.id);
 	if (id === null) error(404, "There's no show at this address.");
 	try {
-		return { show: await getShow(id, fetch) };
+		// Which episodes the user watched comes with it; a mark reloads just
+		// that (the page's refreshWatched), not the show. If it fails, the
+		// show still shows, with the error in the action column.
+		const [show, watched] = await Promise.all([
+			getShow(id, fetch),
+			optionalLoad(showWatched(id, fetch))
+		]);
+		return { show, watched: watched.value, watchedError: watched.error };
 	} catch (e) {
 		catalogLoadError(e, `TMDB has no show with ID ${id}.`);
 	}

@@ -430,18 +430,30 @@ Each milestone ends with something runnable and is merged to `main` before the n
 - The phone bottom tab bar from `DESIGN.md` (Dashboard, Search, History, Watchlist, More).
 - Local library search with FTS5.
 - **Done when:** everything the legacy app could do works in the new one.
-- **Status: in progress**, in slices: (1) the `watch_events` table and `internal/tracking` (recording, dedupe, merging, removal), Go only; (2) the tracking API, the detail pages' watch actions, and `/history`; (3) watchlist and ratings, from tables to pages; (4) `user_settings` (time zone), show progress, and the settings page; (5) the dashboard with its widgets, saved layout, and day-based stats, the phone tab bar, and the first Playwright tests; (6) local library search with FTS5. The legacy app's recommendations and social feed blocks aren't ported (social features are a non-goal).
+- **Status: in progress**, in slices: (1) the `watch_events` table and `internal/tracking` (recording, dedupe, merging, removal), Go only; (2) the tracking API, the detail pages' watch actions, and `/history`; then a UI pass that brings the existing pages (header, search, movie and show pages) to the look the maintainer wants and updates `DESIGN.md`, so later slices build on it (maintainer decision, 2026-11-04); (3) watchlist and ratings, from tables to pages; (4) `user_settings` (time zone), show progress, and the settings page; (5) the dashboard with its widgets, saved layout, and day-based stats, the phone tab bar, and the first Playwright tests; (6) local library search with FTS5. The legacy app's recommendations and social feed blocks aren't ported (social features are a non-goal).
   - Decided by the maintainer (2026-11-03):
     - Removing a watch from history also removes the events merged into it: they were the same watch. A media server re-sending the same `source_event_id` later records a new watch.
     - Marking a season or show watched adds a watch for each aired episode that isn't watched yet, skipping unaired ones and missing or not-found episodes and seasons.
     - Marking something watched offers "just now", the release or air date, or another date and time picked in the user's time zone.
-  - Slice 1 is built (branch `m4-watch-events`, not merged): migration 00008 (`watch_events`) and `internal/tracking` with `Record` and `Remove`. Nothing calls it yet; slice 2's API is the first user. Decisions made while building it:
+  - Slice 1 is merged (#28): migration 00008 (`watch_events`) and `internal/tracking` with `Record` and `Remove`. Nothing calls it yet; slice 2's API is the first user. Decisions made while building it:
     - A repeated watch is stored with `merged_into_id` pointing at the kept watch, which is always a kept row, never another merged one. A new event merges into the nearest kept watch of the same item within the window; equally close ones go to the one recorded first. Merged events don't extend the window. The window is an option (default 3 hours), not a setting yet.
     - `watch_events.id` is `AUTOINCREMENT`, like `users` and `api_tokens`: the SPA will hold event IDs, and a stale remove must not hit a newer watch. `Remove` takes any event of a watch, kept or merged, and deletes the whole watch.
     - Manual marks have no `source_event_id`; every other source must send one. The `source` CHECK already lists `jellyfin`, `plex`, `trakt_import`, and `letterboxd_import`, because widening a CHECK after v0.1.0 means rebuilding the table. A source not on the list (an API or script source, Emby) still needs that rebuild.
     - Watch times are stored to the second. A time more than 5 minutes past the server's clock is refused; years 1 to 9999 are accepted, so a film from the 1890s can be marked at its release date.
     - The completion rule (85% or marked played) arrives with the webhooks in M7, applied inside `tracking.Record`, not in the handler. Today's sources are completed watches by definition.
     - `Record` runs in one write transaction, and its core takes the caller's transaction, so slice 2's season marking (check what's watched, then insert) and M5's imports can be atomic.
+  - Slice 2 is in review (branch `m4-tracking-api`): marking and history in `internal/tracking` (`mark.go`, `read.go`), the routes in `internal/httpapi/tracking.go`, the SPA's mark actions on the movie and show pages, and `/history`. Decided by the maintainer (2026-11-03):
+    - A watch at the release or air date is stored at noon UTC on that date, so it stays on the same calendar day from UTC-11 to UTC+11. "Aired" means that time has passed; an episode with no air date hasn't aired.
+    - Until slice 4 adds the time zone setting, the "other date" picker and history's day headings use the browser's time zone.
+    - A single episode can always be marked "just now" or at a picked time, aired or not, and with no air date; only "air date" needs a date that has passed. Season and show marks still skip unaired episodes.
+    - Episodes are written `S01E02` everywhere.
+    - `/history` is a grid of poster cards under day headings, after classic Trakt's history page: an episode shows its show's poster, the card's watched check removes the watch (after a confirm), a watchlist button is shown disabled until slice 3, a heart shows TMDB's rating, and each day shows its total watch time. It loads more as you scroll instead of using numbered pages.
+  - Decisions made while building it:
+    - Routes: `POST /movies/{id}/watches`, `POST /episodes/{id}/watches` (TMDB episode ID), `POST /shows/{id}/seasons/{n}/watches`, `POST /shows/{id}/watches`, `DELETE /watches/{id}`, `GET /movies/{id}/watches`, `GET /shows/{id}/watched`, `GET /history`. A mark's body is empty or `{}` (now), `{"watched_at": "<RFC 3339>"}`, or `{"release_date": true}`, never both. They work without the TMDB key, and only on stored titles (the page stores them on open).
+    - Errors: 404 `not_found`, 400 `invalid_request` (including malformed JSON, unlike `invalid_json` elsewhere, so the decoder's message never echoes input), 422 `no_release_date` / `not_released`, and 409 `episodes_pending` when a season or show mark comes before the background sync stored its episodes, so a mark never silently covers only part of a show.
+    - Marking a show skips specials (season 0), which are marked as their own season. If two listed seasons share a number, show and season marks both use the one with the lowest TMDB ID, as the page does. A season or show mark checks what's watched and inserts in one write transaction.
+    - History pages by a cursor, `<unix seconds>_<watch id>` (seconds may be negative, for watches before 1970), over kept watches, newest first. 50 per page by default, at most 100. A watch time that truncates to Go's zero time is refused. Each entry carries the episode's `air_date`, the title's or episode's `runtime` (minutes, 0 when unknown) and TMDB `vote_average` for the cards; the day totals are summed in the browser, since day boundaries depend on the time zone.
+    - A watched episode can't be unmarked by a click on the show page; removing a watch happens on `/history` (or the movie page's list of watches).
   - For later milestones (from the slice 1 review):
     - M7: `source_event_id` is unique per user and source, so with more than one Jellyfin or Plex server the ID needs the server's ID in it. A repeated ID naming a different item is returned as a duplicate of the stored event. The webhook handler must cap the payload size and strip any token before calling `Record`.
     - M5: re-running an import after removing an imported watch brings that watch back, since removal frees its `source_event_id`.
@@ -479,6 +491,14 @@ Brought forward so the maintainer's real history is in watcht before v0.1, which
 - Letterboxd CSV importer.
 - Optional OIDC sign-in.
 - Full export of a user's data as JSON (and CSV for history).
+
+## Backlog
+
+Ideas the maintainer wants kept but hasn't scheduled into a milestone.
+
+- **Where to watch** (2026-11-03): a play button on poster cards that shows where a title can be streamed, if anywhere. TMDB's watch providers endpoint is the likely source.
+- **History filters and counts** (2026-11-03): the `/history` toolbar's controls, shown disabled until built: type (all, movies, episodes), a watched-date range, sort (field and direction), source (manual, Jellyfin, Plex, imports), and fade or hide filters; plus the number of items and plays. All need API support.
+- **Remove all plays** (2026-11-03): the history card menu's option to delete every watch of a movie or episode, shown disabled until built.
 
 ## Risks and open questions
 

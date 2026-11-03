@@ -42,6 +42,126 @@ func (q *Queries) EpisodeExists(ctx context.Context, id int64) (bool, error) {
 	return exists, err
 }
 
+const episodeToMark = `-- name: EpisodeToMark :one
+SELECT id, air_date FROM episodes WHERE tmdb_id = ?1
+`
+
+type EpisodeToMarkRow struct {
+	ID      int64
+	AirDate sql.NullString
+}
+
+// EpisodeToMark returns a stored episode's internal ID and air date.
+func (q *Queries) EpisodeToMark(ctx context.Context, tmdbID int64) (EpisodeToMarkRow, error) {
+	row := q.db.QueryRowContext(ctx, episodeToMark, tmdbID)
+	var i EpisodeToMarkRow
+	err := row.Scan(&i.ID, &i.AirDate)
+	return i, err
+}
+
+const history = `-- name: History :many
+SELECT w.id, w.watched_at, w.source,
+    m.tmdb_id AS movie_tmdb_id, m.title AS movie_title,
+    m.poster_path AS movie_poster_path, m.release_date AS movie_release_date,
+    m.runtime AS movie_runtime, m.vote_average AS movie_vote_average,
+    e.tmdb_id AS episode_tmdb_id, e.season_number, e.episode_number,
+    e.name AS episode_name, e.still_path AS episode_still_path,
+    e.air_date AS episode_air_date, e.runtime AS episode_runtime, e.vote_average AS episode_vote_average,
+    s.tmdb_id AS show_tmdb_id, s.name AS show_name, s.poster_path AS show_poster_path
+FROM watch_events w
+LEFT JOIN movies m ON m.id = w.movie_id
+LEFT JOIN episodes e ON e.id = w.episode_id
+LEFT JOIN shows s ON s.id = e.show_id
+WHERE w.user_id = ?1
+    AND w.merged_into_id IS NULL
+    AND (w.watched_at < ?2
+        OR (w.watched_at = ?2 AND w.id < ?3))
+ORDER BY w.watched_at DESC, w.id DESC
+LIMIT ?4
+`
+
+type HistoryParams struct {
+	UserID          int64
+	BeforeWatchedAt string
+	BeforeID        int64
+	RowLimit        int64
+}
+
+type HistoryRow struct {
+	ID                 int64
+	WatchedAt          string
+	Source             string
+	MovieTmdbID        sql.NullInt64
+	MovieTitle         sql.NullString
+	MoviePosterPath    sql.NullString
+	MovieReleaseDate   sql.NullString
+	MovieRuntime       sql.NullInt64
+	MovieVoteAverage   sql.NullFloat64
+	EpisodeTmdbID      sql.NullInt64
+	SeasonNumber       sql.NullInt64
+	EpisodeNumber      sql.NullInt64
+	EpisodeName        sql.NullString
+	EpisodeStillPath   sql.NullString
+	EpisodeAirDate     sql.NullString
+	EpisodeRuntime     sql.NullInt64
+	EpisodeVoteAverage sql.NullFloat64
+	ShowTmdbID         sql.NullInt64
+	ShowName           sql.NullString
+	ShowPosterPath     sql.NullString
+}
+
+// History lists a user's kept watches, newest first, with what was watched.
+// Pass the last row's watched_at and id to get the next page; the first
+// page passes a watched_at after every row and the largest id.
+func (q *Queries) History(ctx context.Context, arg HistoryParams) ([]HistoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, history,
+		arg.UserID,
+		arg.BeforeWatchedAt,
+		arg.BeforeID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HistoryRow{}
+	for rows.Next() {
+		var i HistoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WatchedAt,
+			&i.Source,
+			&i.MovieTmdbID,
+			&i.MovieTitle,
+			&i.MoviePosterPath,
+			&i.MovieReleaseDate,
+			&i.MovieRuntime,
+			&i.MovieVoteAverage,
+			&i.EpisodeTmdbID,
+			&i.SeasonNumber,
+			&i.EpisodeNumber,
+			&i.EpisodeName,
+			&i.EpisodeStillPath,
+			&i.EpisodeAirDate,
+			&i.EpisodeRuntime,
+			&i.EpisodeVoteAverage,
+			&i.ShowTmdbID,
+			&i.ShowName,
+			&i.ShowPosterPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertWatchEvent = `-- name: InsertWatchEvent :one
 INSERT INTO watch_events (
     user_id, movie_id, episode_id, watched_at, source, source_event_id,
@@ -225,9 +345,285 @@ func (q *Queries) MovieExists(ctx context.Context, id int64) (bool, error) {
 	return exists, err
 }
 
+const movieToMark = `-- name: MovieToMark :one
+SELECT id, release_date FROM movies WHERE tmdb_id = ?1
+`
+
+type MovieToMarkRow struct {
+	ID          int64
+	ReleaseDate sql.NullString
+}
+
+// MovieToMark returns a stored movie's internal ID and release date.
+func (q *Queries) MovieToMark(ctx context.Context, tmdbID int64) (MovieToMarkRow, error) {
+	row := q.db.QueryRowContext(ctx, movieToMark, tmdbID)
+	var i MovieToMarkRow
+	err := row.Scan(&i.ID, &i.ReleaseDate)
+	return i, err
+}
+
+const movieWatches = `-- name: MovieWatches :many
+SELECT w.id, w.watched_at, w.source FROM watch_events w
+JOIN movies m ON m.id = w.movie_id
+WHERE w.user_id = ?1
+    AND m.tmdb_id = ?2
+    AND w.merged_into_id IS NULL
+ORDER BY w.watched_at DESC, w.id DESC
+`
+
+type MovieWatchesParams struct {
+	UserID      int64
+	MovieTmdbID int64
+}
+
+type MovieWatchesRow struct {
+	ID        int64
+	WatchedAt string
+	Source    string
+}
+
+// MovieWatches lists a user's kept watches of a movie, newest first.
+func (q *Queries) MovieWatches(ctx context.Context, arg MovieWatchesParams) ([]MovieWatchesRow, error) {
+	rows, err := q.db.QueryContext(ctx, movieWatches, arg.UserID, arg.MovieTmdbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MovieWatchesRow{}
+	for rows.Next() {
+		var i MovieWatchesRow
+		if err := rows.Scan(&i.ID, &i.WatchedAt, &i.Source); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const showEpisodesPending = `-- name: ShowEpisodesPending :one
+SELECT EXISTS (
+    SELECT 1 FROM seasons s
+    WHERE s.show_id = ?1
+        AND s.season_number > 0
+        AND s.episodes_updated_at IS NULL
+        AND s.id = (
+            SELECT s2.id FROM seasons s2
+            WHERE s2.show_id = s.show_id AND s2.season_number = s.season_number
+                AND s2.missing_since IS NULL AND s2.not_found_since IS NULL
+            ORDER BY s2.tmdb_id LIMIT 1
+        )
+)
+`
+
+// ShowEpisodesPending reports whether any season UnwatchedShowEpisodes
+// covers hasn't had its episodes fetched yet.
+func (q *Queries) ShowEpisodesPending(ctx context.Context, showID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, showEpisodesPending, showID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const showToMark = `-- name: ShowToMark :one
+SELECT id FROM shows WHERE tmdb_id = ?1
+`
+
+// ShowToMark returns a stored show's internal ID.
+func (q *Queries) ShowToMark(ctx context.Context, tmdbID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, showToMark, tmdbID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const showWatchedEpisodes = `-- name: ShowWatchedEpisodes :many
+SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at
+FROM watch_events w
+JOIN episodes e ON e.id = w.episode_id
+JOIN shows s ON s.id = e.show_id
+WHERE w.user_id = ?1
+    AND s.tmdb_id = ?2
+    AND w.merged_into_id IS NULL
+GROUP BY e.tmdb_id
+ORDER BY e.tmdb_id
+`
+
+type ShowWatchedEpisodesParams struct {
+	UserID     int64
+	ShowTmdbID int64
+}
+
+type ShowWatchedEpisodesRow struct {
+	TmdbID        int64
+	Plays         int64
+	LastWatchedAt string
+}
+
+// ShowWatchedEpisodes counts a user's kept watches of each episode of a show
+// (listed or not), by TMDB episode ID.
+func (q *Queries) ShowWatchedEpisodes(ctx context.Context, arg ShowWatchedEpisodesParams) ([]ShowWatchedEpisodesRow, error) {
+	rows, err := q.db.QueryContext(ctx, showWatchedEpisodes, arg.UserID, arg.ShowTmdbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ShowWatchedEpisodesRow{}
+	for rows.Next() {
+		var i ShowWatchedEpisodesRow
+		if err := rows.Scan(&i.TmdbID, &i.Plays, &i.LastWatchedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const unwatchedSeasonEpisodes = `-- name: UnwatchedSeasonEpisodes :many
+SELECT e.id, e.air_date FROM episodes e
+WHERE e.season_id = ?1
+    AND e.missing_since IS NULL
+    AND NOT EXISTS (
+        SELECT 1 FROM watch_events w
+        WHERE w.user_id = ?2 AND w.episode_id = e.id
+    )
+ORDER BY e.episode_number, e.tmdb_id
+`
+
+type UnwatchedSeasonEpisodesParams struct {
+	SeasonID int64
+	UserID   int64
+}
+
+type UnwatchedSeasonEpisodesRow struct {
+	ID      int64
+	AirDate sql.NullString
+}
+
+// UnwatchedSeasonEpisodes lists a season's listed episodes that the user has
+// no watch of, in episode order. tracking decides which have aired.
+func (q *Queries) UnwatchedSeasonEpisodes(ctx context.Context, arg UnwatchedSeasonEpisodesParams) ([]UnwatchedSeasonEpisodesRow, error) {
+	rows, err := q.db.QueryContext(ctx, unwatchedSeasonEpisodes, arg.SeasonID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnwatchedSeasonEpisodesRow{}
+	for rows.Next() {
+		var i UnwatchedSeasonEpisodesRow
+		if err := rows.Scan(&i.ID, &i.AirDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const unwatchedShowEpisodes = `-- name: UnwatchedShowEpisodes :many
+SELECT e.id, e.air_date FROM episodes e
+JOIN seasons s ON s.id = e.season_id
+WHERE s.show_id = ?1
+    AND s.season_number > 0
+    AND s.id = (
+        SELECT s2.id FROM seasons s2
+        WHERE s2.show_id = s.show_id AND s2.season_number = s.season_number
+            AND s2.missing_since IS NULL AND s2.not_found_since IS NULL
+        ORDER BY s2.tmdb_id LIMIT 1
+    )
+    AND e.missing_since IS NULL
+    AND NOT EXISTS (
+        SELECT 1 FROM watch_events w
+        WHERE w.user_id = ?2 AND w.episode_id = e.id
+    )
+ORDER BY s.season_number, e.episode_number, e.tmdb_id
+`
+
+type UnwatchedShowEpisodesParams struct {
+	ShowID int64
+	UserID int64
+}
+
+type UnwatchedShowEpisodesRow struct {
+	ID      int64
+	AirDate sql.NullString
+}
+
+// UnwatchedShowEpisodes is UnwatchedSeasonEpisodes for every listed season
+// of a show except specials (season 0). If two listed seasons share a
+// number, only the one VisibleSeasonToMark picks counts, as on the page.
+func (q *Queries) UnwatchedShowEpisodes(ctx context.Context, arg UnwatchedShowEpisodesParams) ([]UnwatchedShowEpisodesRow, error) {
+	rows, err := q.db.QueryContext(ctx, unwatchedShowEpisodes, arg.ShowID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UnwatchedShowEpisodesRow{}
+	for rows.Next() {
+		var i UnwatchedShowEpisodesRow
+		if err := rows.Scan(&i.ID, &i.AirDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const visibleSeasonToMark = `-- name: VisibleSeasonToMark :one
+SELECT seasons.id, seasons.episodes_updated_at IS NULL AS episodes_pending FROM seasons
+JOIN shows ON shows.id = seasons.show_id
+WHERE shows.tmdb_id = ?1
+    AND seasons.season_number = ?2
+    AND seasons.missing_since IS NULL AND seasons.not_found_since IS NULL
+ORDER BY seasons.tmdb_id
+LIMIT 1
+`
+
+type VisibleSeasonToMarkParams struct {
+	ShowTmdbID   int64
+	SeasonNumber int64
+}
+
+type VisibleSeasonToMarkRow struct {
+	ID              int64
+	EpisodesPending bool
+}
+
+// VisibleSeasonToMark returns the internal ID of the season a show lists with
+// this number, by the same rule as GetVisibleSeason (lowest TMDB season ID),
+// and whether its episodes have been fetched yet.
+func (q *Queries) VisibleSeasonToMark(ctx context.Context, arg VisibleSeasonToMarkParams) (VisibleSeasonToMarkRow, error) {
+	row := q.db.QueryRowContext(ctx, visibleSeasonToMark, arg.ShowTmdbID, arg.SeasonNumber)
+	var i VisibleSeasonToMarkRow
+	err := row.Scan(&i.ID, &i.EpisodesPending)
+	return i, err
+}
+
 const watchEventBySource = `-- name: WatchEventBySource :one
 
-SELECT id, merged_into_id FROM watch_events
+SELECT id, merged_into_id, watched_at FROM watch_events
 WHERE user_id = ?1
   AND source = ?2
   AND source_event_id = ?3
@@ -242,6 +638,7 @@ type WatchEventBySourceParams struct {
 type WatchEventBySourceRow struct {
 	ID           int64
 	MergedIntoID sql.NullInt64
+	WatchedAt    string
 }
 
 // Watch history. internal/tracking owns the rules (source idempotency,
@@ -252,6 +649,6 @@ type WatchEventBySourceRow struct {
 func (q *Queries) WatchEventBySource(ctx context.Context, arg WatchEventBySourceParams) (WatchEventBySourceRow, error) {
 	row := q.db.QueryRowContext(ctx, watchEventBySource, arg.UserID, arg.Source, arg.SourceEventID)
 	var i WatchEventBySourceRow
-	err := row.Scan(&i.ID, &i.MergedIntoID)
+	err := row.Scan(&i.ID, &i.MergedIntoID, &i.WatchedAt)
 	return i, err
 }

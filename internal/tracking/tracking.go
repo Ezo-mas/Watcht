@@ -82,6 +82,8 @@ type Event struct {
 type Result struct {
 	// ID is the stored event's ID; for a duplicate, the earlier event's.
 	ID int64
+	// WatchedAt is the stored event's watch time.
+	WatchedAt time.Time
 	// MergedInto is the kept watch this event counts as, or 0 if the event
 	// is itself a kept watch.
 	MergedInto int64
@@ -99,9 +101,10 @@ type Options struct {
 	Now func() time.Time
 }
 
-// Service records and removes watches.
+// Service records, removes, and lists watches.
 type Service struct {
 	db     *db.DB
+	read   *sqlc.Queries
 	write  *sqlc.Queries
 	window time.Duration
 	now    func() time.Time
@@ -109,7 +112,7 @@ type Service struct {
 
 // New returns a Service that stores into d.
 func New(d *db.DB, opts Options) *Service {
-	s := &Service{db: d, write: sqlc.New(d.Write), window: opts.DedupeWindow, now: opts.Now}
+	s := &Service{db: d, read: sqlc.New(d.Read), write: sqlc.New(d.Write), window: opts.DedupeWindow, now: opts.Now}
 	if s.window <= 0 {
 		s.window = DefaultDedupeWindow
 	}
@@ -148,7 +151,11 @@ func (s *Service) record(ctx context.Context, q *sqlc.Queries, e Event) (Result,
 			SourceEventID: sql.NullString{String: e.SourceEventID, Valid: true},
 		})
 		if err == nil {
-			return Result{ID: prev.ID, MergedInto: prev.MergedIntoID.Int64, Duplicate: true}, nil
+			at, err := db.ParseTimestamp(prev.WatchedAt)
+			if err != nil {
+				return Result{}, err
+			}
+			return Result{ID: prev.ID, WatchedAt: at, MergedInto: prev.MergedIntoID.Int64, Duplicate: true}, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return Result{}, fmt.Errorf("find source event: %w", err)
@@ -173,7 +180,7 @@ func (s *Service) record(ctx context.Context, q *sqlc.Queries, e Event) (Result,
 	if err != nil {
 		return Result{}, fmt.Errorf("insert watch event: %w", err)
 	}
-	return Result{ID: id, MergedInto: kept}, nil
+	return Result{ID: id, WatchedAt: watchedAt, MergedInto: kept}, nil
 }
 
 // nearestKept checks the item exists and returns the kept watch of it
@@ -267,7 +274,7 @@ func (s *Service) validate(e Event) error {
 		return fmt.Errorf("%w: no user", ErrInvalid)
 	case (e.MovieID == 0) == (e.EpisodeID == 0), e.MovieID < 0, e.EpisodeID < 0:
 		return fmt.Errorf("%w: exactly one of movie and episode is required", ErrInvalid)
-	case e.WatchedAt.IsZero():
+	case e.WatchedAt.Truncate(time.Second).IsZero(): // stored to the second
 		return fmt.Errorf("%w: no watch time", ErrInvalid)
 	case e.WatchedAt.After(s.now().Add(futureSlack)):
 		return fmt.Errorf("%w: watch time is in the future", ErrInvalid)
