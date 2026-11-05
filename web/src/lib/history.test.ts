@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { HistoryEntry } from './api/types';
 import { dayHeading, dayTotal, groupByDay, insertEntry } from './history';
 
-const entry = (id: number, watched_at: string): HistoryEntry => ({
+const entry = (id: number, watched_at: string, watched_on: string | null = null): HistoryEntry => ({
 	id,
 	watched_at,
+	watched_on,
 	source: 'manual',
 	movie: null,
 	episode: null
@@ -25,6 +26,29 @@ describe('groupByDay', () => {
 			['2026-11-03', [4, 3]],
 			['2026-11-02', [2]],
 			['2026-11-01', [1]]
+		]);
+	});
+
+	it('groups a watch with only a date by that date in every zone', () => {
+		// Noon UTC on 5 Nov is 6 Nov 02:00 in UTC+14 and 5 Nov 01:00 in UTC-11.
+		const dated = [entry(6, '2026-11-05T12:00:00Z', '2026-11-05')];
+		for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago', 'UTC']) {
+			expect(groupByDay(dated, zone)).toMatchObject([{ key: '2026-11-05' }]);
+		}
+	});
+
+	it('merges a day that comes up twice and keeps days newest first', () => {
+		// In UTC+14, 7 is 6 Nov 03:00 and 5 is 6 Nov 01:00, with the 5 Nov
+		// date-only watch sorted between them.
+		const mixed = [
+			entry(7, '2026-11-05T13:00:00Z'),
+			entry(6, '2026-11-05T12:00:00Z', '2026-11-05'),
+			entry(5, '2026-11-05T11:00:00Z')
+		];
+		const days = groupByDay(mixed, 'Pacific/Kiritimati');
+		expect(days.map((d) => [d.key, d.entries.map((e) => e.id)])).toEqual([
+			['2026-11-06', [7, 5]],
+			['2026-11-05', [6]]
 		]);
 	});
 

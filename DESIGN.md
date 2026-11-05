@@ -242,9 +242,8 @@ with a soft shadow.
   time zone named under it and "Mark watched". Arrow keys move between
   options, Esc closes and returns focus. Release and air dates follow the
   server's rule: out from noon UTC that day. Options are 40 px on phones.
-  In the history card's menu an episode's "Air date" shows no date: the
-  history entries don't carry one, so the server checks it and its
-  refusal ("no release date", "not out yet") is the message.
+  A watch marked at the release or air date shows that date with no time,
+  the same in every zone (`formatWatch`).
 
 ## Rows
 

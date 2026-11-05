@@ -40,10 +40,10 @@ describe('hasAired', () => {
 
 describe('seasonProgress', () => {
 	const watched = watchedById([
-		{ tmdb_id: 1, plays: 2, last_watched_at: '2026-11-01T20:00:00Z' },
-		{ tmdb_id: 3, plays: 1, last_watched_at: '2026-11-02T20:00:00Z' },
+		{ tmdb_id: 1, plays: 2, last_watched_at: '2026-11-01T20:00:00Z', last_watched_on: null },
+		{ tmdb_id: 3, plays: 1, last_watched_at: '2026-11-02T20:00:00Z', last_watched_on: null },
 		// An episode TMDB no longer lists for the season.
-		{ tmdb_id: 99, plays: 1, last_watched_at: '2026-11-02T21:00:00Z' }
+		{ tmdb_id: 99, plays: 1, last_watched_at: '2026-11-02T21:00:00Z', last_watched_on: null }
 	]);
 
 	it('counts only the listed episodes', () => {

@@ -163,4 +163,5 @@ type WatchEvent struct {
 	Payload       sql.NullString
 	MergedIntoID  sql.NullInt64
 	CreatedAt     string
+	WatchedOn     sql.NullString
 }

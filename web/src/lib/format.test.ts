@@ -5,8 +5,11 @@ import {
 	formatDateTime,
 	formatDay,
 	formatTime,
+	formatWatch,
 	formatWatchDate,
-	previousDay
+	formatWatchDay,
+	previousDay,
+	watchDay
 } from './format';
 
 describe('formatDate', () => {
@@ -100,5 +103,25 @@ describe('previousDay', () => {
 
 	it('keeps years below 100', () => {
 		expect(previousDay('0050-01-01')).toBe('0049-12-31');
+	});
+});
+
+describe('a watch with only a date', () => {
+	const dated = { watched_at: '2026-11-05T12:00:00Z', watched_on: '2026-11-05' };
+	const timed = { watched_at: '2026-11-05T11:30:00Z', watched_on: null };
+
+	it('shows the date alone, the same in every zone', () => {
+		for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago', 'UTC']) {
+			expect(formatWatch(dated, zone, 'en-GB')).toBe('5 Nov 2026');
+			expect(formatWatchDay(dated, zone, 'en-GB')).toBe('5 Nov 2026');
+			expect(watchDay(dated, zone)).toBe('2026-11-05');
+		}
+	});
+
+	it('shows a timed watch in the zone', () => {
+		expect(formatWatch(timed, 'Pacific/Kiritimati', 'en-GB')).toBe('6 Nov 2026, 01:30');
+		expect(formatWatchDay(timed, 'Pacific/Kiritimati', 'en-GB')).toBe('6 Nov 2026');
+		expect(watchDay(timed, 'Pacific/Kiritimati')).toBe('2026-11-06');
+		expect(watchDay(timed, 'UTC')).toBe('2026-11-05');
 	});
 });

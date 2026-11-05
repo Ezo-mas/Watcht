@@ -95,25 +95,25 @@ func TestTrackingSuccessShapes(t *testing.T) {
 	s := newTrackingServer(t)
 	movie := s.mark("/movies/603/watches", `{"watched_at":"2020-01-02T03:00:00+03:00"}`)
 	id := movie["watch"].(map[string]any)["id"]
-	trackingEqual(t, movie, fmt.Sprintf(`{"watch":{"id":%v,"watched_at":"2020-01-02T00:00:00Z","source":"manual"},"merged_into":null}`, id))
+	trackingEqual(t, movie, fmt.Sprintf(`{"watch":{"id":%v,"watched_at":"2020-01-02T00:00:00Z","watched_on":null,"source":"manual"},"merged_into":null}`, id))
 	merged := s.mark("/movies/603/watches", `{"watched_at":"2020-01-02T00:00:00Z"}`)
 	if merged["merged_into"] != id {
 		t.Fatalf("merged: %v", merged)
 	}
 	episode := s.mark("/episodes/62085/watches", `{"release_date":true}`)
 	eid := episode["watch"].(map[string]any)["id"]
-	trackingEqual(t, episode, fmt.Sprintf(`{"watch":{"id":%v,"watched_at":"2008-01-20T12:00:00Z","source":"manual"},"merged_into":null}`, eid))
-	trackingEqual(t, trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":"2020-01-02T00:00:00Z","source":"manual"}]}`, id))
-	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"plays":1,"last_watched_at":"2008-01-20T12:00:00Z"}]}`)
+	trackingEqual(t, episode, fmt.Sprintf(`{"watch":{"id":%v,"watched_at":"2008-01-20T12:00:00Z","watched_on":"2008-01-20","source":"manual"},"merged_into":null}`, eid))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":"2020-01-02T00:00:00Z","watched_on":null,"source":"manual"}]}`, id))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"plays":1,"last_watched_at":"2008-01-20T12:00:00Z","last_watched_on":"2008-01-20"}]}`)
 	history := trackingObject(t, s.call("GET", "/history", ""), 200)
-	trackingEqual(t, history, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"2020-01-02T00:00:00Z","source":"manual","movie":{"tmdb_id":603,"title":"Movie","poster_path":"/movie.jpg","poster_url":"https://image.tmdb.org/t/p/w342/movie.jpg","release_date":"1999-03-30","runtime":0,"vote_average":0},"episode":null},{"id":%v,"watched_at":"2008-01-20T12:00:00Z","source":"manual","movie":null,"episode":{"tmdb_id":62085,"season_number":1,"episode_number":1,"name":"Episode","still_path":"/still.jpg","still_url":"https://image.tmdb.org/t/p/w300/still.jpg","air_date":"2008-01-20","runtime":0,"vote_average":0,"show":{"tmdb_id":1396,"name":"Show","poster_path":"/show.jpg","poster_url":"https://image.tmdb.org/t/p/w342/show.jpg"}}}],"next_cursor":null}`, id, eid))
+	trackingEqual(t, history, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"2020-01-02T00:00:00Z","watched_on":null,"source":"manual","movie":{"tmdb_id":603,"title":"Movie","poster_path":"/movie.jpg","poster_url":"https://image.tmdb.org/t/p/w342/movie.jpg","release_date":"1999-03-30","runtime":0,"vote_average":0},"episode":null},{"id":%v,"watched_at":"2008-01-20T12:00:00Z","watched_on":"2008-01-20","source":"manual","movie":null,"episode":{"tmdb_id":62085,"season_number":1,"episode_number":1,"name":"Episode","still_path":"/still.jpg","still_url":"https://image.tmdb.org/t/p/w300/still.jpg","air_date":"2008-01-20","runtime":0,"vote_average":0,"show":{"tmdb_id":1396,"name":"Show","poster_path":"/show.jpg","poster_url":"https://image.tmdb.org/t/p/w342/show.jpg"}}}],"next_cursor":null}`, id, eid))
 	s.mark("/movies/603/watches", `{"watched_at":"2021-01-01T00:00:00Z"}`)
 	watches := trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200)["watches"].([]any)
 	if len(watches) != 2 || watches[0].(map[string]any)["watched_at"] != "2021-01-01T00:00:00Z" {
 		t.Fatal(watches)
 	}
 	s.mark("/episodes/62085/watches", `{"watched_at":"2021-01-01T00:00:00Z"}`)
-	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"plays":2,"last_watched_at":"2021-01-01T00:00:00Z"}]}`)
+	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"plays":2,"last_watched_at":"2021-01-01T00:00:00Z","last_watched_on":null}]}`)
 }
 
 func TestTrackingBatchShapes(t *testing.T) {
@@ -132,17 +132,21 @@ func TestTrackingBodyVariants(t *testing.T) {
 		for _, tc := range []struct {
 			body   string
 			status int
+			code   string
 		}{
-			{"", 200}, {`{}`, 200}, {`{"release_date":false}`, 200}, {`{"release_date":true}`, 200}, {`{"watched_at":"2020-01-01T03:00:00+03:00"}`, 200},
-			{`{"watched_at":"2020-01-01T00:00:00Z","release_date":true}`, 400},
-			{`{"watched_at":"2020-01-01T00:00:00Z","release_date":false}`, 400},
-			{`{"watched_at":"private-bad-time"}`, 400}, {`{"private_unknown":true}`, 400}, {`{`, 400}, {`{} {}`, 400}, {`[]`, 400}, {`null`, 400},
-			{`{"watched_at":null}`, 400}, {`{"release_date":null}`, 400}, {`{"release_date":"yes"}`, 400},
+			{"", 200, ""}, {`{}`, 200, ""}, {`{"release_date":true}`, 200, ""}, {`{"watched_at":"2020-01-01T03:00:00+03:00"}`, 200, ""},
+			// release_date is true or absent: false isn't a way to say "now".
+			{`{"release_date":false}`, 400, "invalid_request"},
+			{`{"watched_at":"2020-01-01T00:00:00Z","release_date":true}`, 400, "invalid_request"},
+			{`{"watched_at":"2020-01-01T00:00:00Z","release_date":false}`, 400, "invalid_request"},
+			{`{"watched_at":"private-bad-time"}`, 400, "invalid_request"}, {`null`, 400, "invalid_request"},
+			{`{"watched_at":null}`, 400, "invalid_request"}, {`{"release_date":null}`, 400, "invalid_request"}, {`{"release_date":"yes"}`, 400, "invalid_request"},
+			{`{"private_unknown":true}`, 400, "invalid_json"}, {`{`, 400, "invalid_json"}, {`{} {}`, 400, "invalid_json"}, {`[]`, 400, "invalid_json"},
 		} {
 			t.Run(path+tc.body, func(t *testing.T) {
 				rec := s.call("POST", path, tc.body)
 				if tc.status == 400 {
-					catalogError(t, rec, 400, "invalid_request")
+					catalogError(t, rec, 400, tc.code)
 					if strings.Contains(rec.Body.String(), "private") {
 						t.Fatal("input leaked")
 					}
@@ -153,7 +157,7 @@ func TestTrackingBodyVariants(t *testing.T) {
 					status = 201
 				}
 				obj := trackingObject(t, rec, status)
-				if status == 201 && (tc.body == "" || tc.body == `{}` || tc.body == `{"release_date":false}`) {
+				if status == 201 && (tc.body == "" || tc.body == `{}`) {
 					if obj["watch"].(map[string]any)["watched_at"] != s.clock.Now().Format(time.RFC3339) {
 						t.Fatal(obj)
 					}
@@ -215,8 +219,8 @@ func TestTrackingIsolationAndDelete(t *testing.T) {
 	if len(history) != 2 {
 		t.Fatal(history)
 	}
-	trackingEqual(t, trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":%q,"source":"manual"}]}`, id, s.clock.Now().Format(time.RFC3339)))
-	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), fmt.Sprintf(`{"episodes":[{"tmdb_id":62085,"plays":1,"last_watched_at":%q}]}`, s.clock.Now().Format(time.RFC3339)))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":%q,"watched_on":null,"source":"manual"}]}`, id, s.clock.Now().Format(time.RFC3339)))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), fmt.Sprintf(`{"episodes":[{"tmdb_id":62085,"plays":1,"last_watched_at":%q,"last_watched_on":null}]}`, s.clock.Now().Format(time.RFC3339)))
 	rec := s.call("DELETE", path, "")
 	if rec.Code != 204 || rec.Body.Len() != 0 {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
@@ -301,9 +305,9 @@ func TestTrackingHistoryOldDatesAndEmptyImages(t *testing.T) {
 	first := trackingObject(t, s.call("GET", "/history?limit=1", ""), 200)
 	at := time.Date(1895, 12, 28, 12, 0, 0, 0, time.UTC)
 	cursor := fmt.Sprintf("%d_%.0f", at.Unix(), movieID)
-	trackingEqual(t, first, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"1895-12-28T12:00:00Z","source":"manual","movie":{"tmdb_id":606,"title":"Old","poster_path":"","poster_url":"","release_date":"1895-12-28","runtime":50,"vote_average":6.5},"episode":null}],"next_cursor":%q}`, movieID, cursor))
+	trackingEqual(t, first, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"1895-12-28T12:00:00Z","watched_on":"1895-12-28","source":"manual","movie":{"tmdb_id":606,"title":"Old","poster_path":"","poster_url":"","release_date":"1895-12-28","runtime":50,"vote_average":6.5},"episode":null}],"next_cursor":%q}`, movieID, cursor))
 	second := trackingObject(t, s.call("GET", "/history?limit=2&cursor="+cursor, ""), 200)
-	trackingEqual(t, second, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"1890-01-01T12:00:00Z","source":"manual","movie":null,"episode":{"tmdb_id":62086,"season_number":1,"episode_number":1,"name":"Old episode","still_path":"","still_url":"","air_date":"1890-01-01","runtime":0,"vote_average":0,"show":{"tmdb_id":1397,"name":"No images","poster_path":"","poster_url":""}}}],"next_cursor":null}`, episodeID))
+	trackingEqual(t, second, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"1890-01-01T12:00:00Z","watched_on":"1890-01-01","source":"manual","movie":null,"episode":{"tmdb_id":62086,"season_number":1,"episode_number":1,"name":"Old episode","still_path":"","still_url":"","air_date":"1890-01-01","runtime":0,"vote_average":0,"show":{"tmdb_id":1397,"name":"No images","poster_path":"","poster_url":""}}}],"next_cursor":null}`, episodeID))
 	trackingEqual(t, trackingObject(t, s.call("GET", "/history?cursor=-62135596800_1", ""), 200), `{"entries":[],"next_cursor":null}`)
 	for _, cursor := range []string{"0_1", "%2B1_1", "253402300799_1", "-62135596799_1"} {
 		trackingObject(t, s.call("GET", "/history?cursor="+cursor, ""), 200)

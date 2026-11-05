@@ -2,6 +2,7 @@ package tracking
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -116,6 +117,10 @@ func TestMarkMovie(t *testing.T) {
 	if watches[2].ID != rel.ID {
 		t.Errorf("release watch ID = %d, want %d", watches[2].ID, rel.ID)
 	}
+	// The release date mark is stored as the date; the timed ones aren't.
+	if rel.WatchedOn != "1895-12-28" || watches[2].WatchedOn != "1895-12-28" || watches[0].WatchedOn != "" || watches[1].WatchedOn != "" {
+		t.Errorf("WatchedOn: mark %q, watches %+v", rel.WatchedOn, watches)
+	}
 
 	for name, tt := range map[string]struct {
 		id   int
@@ -200,6 +205,16 @@ func TestMarkSeasonSkipsWatchedUnairedAndMissing(t *testing.T) {
 	for id, w := range want {
 		if got := e.watchTimes(t, id); len(got) != len(w) || (len(w) == 1 && got[0] != w[0]) {
 			t.Errorf("episode %d: watch times = %v, want %v", id, got, w)
+		}
+	}
+	// The air date marks are stored as dates; 102's earlier timed watch isn't.
+	for id, w := range map[int]string{101: "2008-01-20", 102: "", 105: "2026-11-03"} {
+		var on sql.NullString
+		if err := e.d.Read.QueryRow(`SELECT w.watched_on FROM watch_events w JOIN episodes e ON e.id = w.episode_id WHERE e.tmdb_id = ?`, id).Scan(&on); err != nil {
+			t.Fatal(err)
+		}
+		if on.String != w {
+			t.Errorf("episode %d: watched_on = %q, want %q", id, on.String, w)
 		}
 	}
 

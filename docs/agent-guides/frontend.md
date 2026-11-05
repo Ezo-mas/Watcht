@@ -50,10 +50,13 @@ with `adapter-static` in SPA mode and embedded into the Go binary.
   (`AppFooter`) must stay; see DESIGN.md.
 - **Dates** come from the API as UTC RFC 3339. Format calendar dates
   (release and air dates) with `formatDate`/`formatDay`
-  (`#lib/format.js`). Watch times use `formatDateTime`, `formatTime`, and
-  `dayKey` for grouping by day, in the browser's time zone until M4 slice 4
-  adds the user's setting (maintainer decision, 2026-11-03); pass a zone
-  rather than formatting times anywhere else.
+  (`#lib/format.js`). Show a watch with `formatWatch` and group it with
+  `watchDay`: a watch with `watched_on` (a mark at the release or air
+  date) is that date in every zone, and its `watched_at` only orders it.
+  Other watch times use `formatDateTime`, `formatTime`, and `dayKey`, in
+  the browser's time zone until M4 slice 4 adds the user's setting
+  (maintainer decision, 2026-11-03); pass a zone rather than formatting
+  times anywhere else.
 
 ## Commands (from `web/`)
 

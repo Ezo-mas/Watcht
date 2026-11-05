@@ -151,8 +151,13 @@ export type WatchSource = 'manual' | 'jellyfin' | 'plex' | 'trakt_import' | 'let
 /** One watch. Repeats of it merged by the dedupe rule aren't listed. */
 export interface Watch {
 	id: number;
-	/** RFC 3339, UTC. */
+	/** RFC 3339, UTC. For a watch with only a date, noon UTC on it: use watched_on. */
 	watched_at: string;
+	/**
+	 * YYYY-MM-DD for a watch with a date but no time (a mark at the release or
+	 * air date), shown as that date in every time zone; null otherwise.
+	 */
+	watched_on: string | null;
 	source: WatchSource;
 }
 
@@ -172,6 +177,8 @@ export interface EpisodeWatched {
 	tmdb_id: number;
 	plays: number;
 	last_watched_at: string;
+	/** As Watch.watched_on, for the latest watch. */
+	last_watched_on: string | null;
 }
 
 export interface HistoryMovie {

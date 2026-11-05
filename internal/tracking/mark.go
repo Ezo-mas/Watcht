@@ -30,9 +30,9 @@ type When struct {
 	ReleaseDate bool
 }
 
-// ReleaseTime is the watch time for a release or air date: noon UTC, which
-// is the same calendar day in every zone from UTC-11 to UTC+11, so grouping
-// by day never moves it to the day before or after (maintainer decision,
+// ReleaseTime is noon UTC on a release or air date: the watch time a mark at
+// that date is stored at (with the date itself, see Event.DateOnly), and the
+// moment the item counts as released or aired (maintainer decision,
 // 2026-11-03). ok is false for an empty or invalid date.
 func ReleaseTime(date string) (t time.Time, ok bool) {
 	d, err := time.Parse(time.DateOnly, date)
@@ -57,7 +57,7 @@ func (s *Service) MarkMovie(ctx context.Context, userID int64, tmdbID int, w Whe
 		if err != nil {
 			return err
 		}
-		res, err = s.recordManual(ctx, q, Event{UserID: userID, MovieID: m.ID, WatchedAt: at})
+		res, err = s.recordManual(ctx, q, Event{UserID: userID, MovieID: m.ID, WatchedAt: at, DateOnly: w.ReleaseDate})
 		return err
 	})
 	return res, err
@@ -79,7 +79,7 @@ func (s *Service) MarkEpisode(ctx context.Context, userID int64, tmdbID int, w W
 		if err != nil {
 			return err
 		}
-		res, err = s.recordManual(ctx, q, Event{UserID: userID, EpisodeID: e.ID, WatchedAt: at})
+		res, err = s.recordManual(ctx, q, Event{UserID: userID, EpisodeID: e.ID, WatchedAt: at, DateOnly: w.ReleaseDate})
 		return err
 	})
 	return res, err
@@ -175,7 +175,7 @@ func (s *Service) markEpisodes(ctx context.Context, q *sqlc.Queries, userID int6
 		if at.IsZero() {
 			at = now
 		}
-		if _, err := s.recordManual(ctx, q, Event{UserID: userID, EpisodeID: ep.id, WatchedAt: at}); err != nil {
+		if _, err := s.recordManual(ctx, q, Event{UserID: userID, EpisodeID: ep.id, WatchedAt: at, DateOnly: w.ReleaseDate}); err != nil {
 			return 0, err
 		}
 		added++

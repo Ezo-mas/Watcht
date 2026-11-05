@@ -9,7 +9,7 @@
 	import MarkButton from '#lib/components/MarkButton.svelte';
 	import Notice from '#lib/components/Notice.svelte';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
-	import { formatDateTime } from '#lib/format.js';
+	import { formatWatch } from '#lib/format.js';
 	import { latestOnly } from '#lib/latest.js';
 	import { sourceLabel } from '#lib/watched.js';
 	import { releaseOption } from '#lib/when.js';
@@ -67,7 +67,7 @@
 		try {
 			const res = await markMovie(movie.tmdb_id, when);
 			merged = res.merged_into;
-			at = res.watch.watched_at;
+			at = formatWatch(res.watch);
 		} catch (e) {
 			problem = errorMessage(e, trackingMessages);
 			return;
@@ -78,12 +78,12 @@
 			problem = 'Marked, but the list below is out of date. Reload the page to see it.';
 		}
 		if (merged === null) {
-			note = `Added to your history: ${formatDateTime(at)}.`;
+			note = `Added to your history: ${at}.`;
 		} else {
 			// A repeat within 3 hours counts as the same watch.
 			const kept = list?.find((w) => w.id === merged);
 			note = kept
-				? `Already in your history: you watched it ${formatDateTime(kept.watched_at)}.`
+				? `Already in your history: you watched it ${formatWatch(kept)}.`
 				: 'Already in your history.';
 		}
 	}
@@ -133,7 +133,7 @@
 		}
 		confirming = null;
 		removeBusy = false;
-		note = `Removed the watch from ${formatDateTime(watch.watched_at)}.`;
+		note = `Removed the watch from ${formatWatch(watch)}.`;
 		heading?.focus();
 	}
 
@@ -197,14 +197,17 @@
 				{@const source = sourceLabel(watch.source)}
 				<li class="py-1">
 					<div class="flex items-center gap-2">
-						<time datetime={watch.watched_at} class="min-w-0 flex-1 text-sm text-ink tabular-nums">
-							{formatDateTime(watch.watched_at)}
+						<time
+							datetime={watch.watched_on ?? watch.watched_at}
+							class="min-w-0 flex-1 text-sm text-ink tabular-nums"
+						>
+							{formatWatch(watch)}
 						</time>
 						{#if source}<Badge title="Recorded by {source}">{source}</Badge>{/if}
 						<button
 							type="button"
 							id="remove-watch-{watch.id}"
-							aria-label="Remove the watch from {formatDateTime(watch.watched_at)}"
+							aria-label="Remove the watch from {formatWatch(watch)}"
 							aria-expanded={confirming?.id === watch.id}
 							title="Remove from history"
 							onclick={() => askRemove(watch)}
@@ -230,9 +233,8 @@
 							onconfirm={remove}
 							oncancel={() => cancelRemove(true)}
 						>
-							Remove the watch from <strong class="font-semibold"
-								>{formatDateTime(watch.watched_at)}</strong
-							> from your history?
+							Remove the watch from <strong class="font-semibold">{formatWatch(watch)}</strong> from your
+							history?
 						</InlineConfirm>
 					{/if}
 				</li>

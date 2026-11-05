@@ -113,6 +113,20 @@ func TestShowWatched(t *testing.T) {
 	if _, err := e.s.MarkEpisode(ctx, e.user, 103, When{}); err != nil {
 		t.Fatal(err)
 	}
+	// LastWatchedOn comes from the latest watch, recorded first or not: 102's
+	// latest is its air date mark, 103's is the timed one above.
+	for _, m := range []struct {
+		tmdbID int
+		w      When
+	}{
+		{102, When{At: time.Date(2008, 1, 26, 0, 0, 0, 0, time.UTC)}},
+		{102, When{ReleaseDate: true}},
+		{103, When{ReleaseDate: true}},
+	} {
+		if _, err := e.s.MarkEpisode(ctx, e.user, m.tmdbID, m.w); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := e.s.MarkEpisode(ctx, e.other, 102, When{}); err != nil {
 		t.Fatal(err)
 	}
@@ -122,13 +136,14 @@ func TestShowWatched(t *testing.T) {
 	}
 	want := []EpisodeWatched{
 		{TMDBID: 101, Plays: 2, LastWatchedAt: testNow.Add(-24 * time.Hour)},
-		{TMDBID: 103, Plays: 1, LastWatchedAt: testNow},
+		{TMDBID: 102, Plays: 2, LastWatchedAt: time.Date(2008, 1, 27, 12, 0, 0, 0, time.UTC), LastWatchedOn: "2008-01-27"},
+		{TMDBID: 103, Plays: 2, LastWatchedAt: testNow},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("ShowWatched = %+v, want %+v", got, want)
 	}
 	for i := range want {
-		if got[i].TMDBID != want[i].TMDBID || got[i].Plays != want[i].Plays || !got[i].LastWatchedAt.Equal(want[i].LastWatchedAt) {
+		if got[i].TMDBID != want[i].TMDBID || got[i].Plays != want[i].Plays || !got[i].LastWatchedAt.Equal(want[i].LastWatchedAt) || got[i].LastWatchedOn != want[i].LastWatchedOn {
 			t.Errorf("ShowWatched[%d] = %+v, want %+v", i, got[i], want[i])
 		}
 	}

@@ -12,7 +12,7 @@
 	import MarkButton from '#lib/components/MarkButton.svelte';
 	import Notice from '#lib/components/Notice.svelte';
 	import { catalogMessages, errorMessage, trackingMessages } from '#lib/errors.js';
-	import { formatDateTime, formatDay } from '#lib/format.js';
+	import { formatDay, formatWatch } from '#lib/format.js';
 	import { defaultSeason, parseSeasonParam, seasonLabel } from '#lib/media.js';
 	import { poll } from '#lib/poll.js';
 	import { addedMessage, anyAired, seasonProgress } from '#lib/watched.js';
@@ -153,7 +153,7 @@
 		}
 		// A repeat within 3 hours counts as the same watch.
 		if (res.merged_into !== null) return "Already in your history, so it wasn't added again.";
-		return `Added to your history: ${formatDateTime(res.watch.watched_at)}.`;
+		return `Added to your history: ${formatWatch(res.watch)}.`;
 	}
 
 	// Up to three placeholder rows while a season loads.

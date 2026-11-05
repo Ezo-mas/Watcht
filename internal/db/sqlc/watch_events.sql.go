@@ -60,7 +60,7 @@ func (q *Queries) EpisodeToMark(ctx context.Context, tmdbID int64) (EpisodeToMar
 }
 
 const history = `-- name: History :many
-SELECT w.id, w.watched_at, w.source,
+SELECT w.id, w.watched_at, w.watched_on, w.source,
     m.tmdb_id AS movie_tmdb_id, m.title AS movie_title,
     m.poster_path AS movie_poster_path, m.release_date AS movie_release_date,
     m.runtime AS movie_runtime, m.vote_average AS movie_vote_average,
@@ -90,6 +90,7 @@ type HistoryParams struct {
 type HistoryRow struct {
 	ID                 int64
 	WatchedAt          string
+	WatchedOn          sql.NullString
 	Source             string
 	MovieTmdbID        sql.NullInt64
 	MovieTitle         sql.NullString
@@ -130,6 +131,7 @@ func (q *Queries) History(ctx context.Context, arg HistoryParams) ([]HistoryRow,
 		if err := rows.Scan(
 			&i.ID,
 			&i.WatchedAt,
+			&i.WatchedOn,
 			&i.Source,
 			&i.MovieTmdbID,
 			&i.MovieTitle,
@@ -164,8 +166,8 @@ func (q *Queries) History(ctx context.Context, arg HistoryParams) ([]HistoryRow,
 
 const insertWatchEvent = `-- name: InsertWatchEvent :one
 INSERT INTO watch_events (
-    user_id, movie_id, episode_id, watched_at, source, source_event_id,
-    payload, merged_into_id, created_at
+    user_id, movie_id, episode_id, watched_at, watched_on, source,
+    source_event_id, payload, merged_into_id, created_at
 ) VALUES (
     ?1,
     ?2,
@@ -175,7 +177,8 @@ INSERT INTO watch_events (
     ?6,
     ?7,
     ?8,
-    ?9
+    ?9,
+    ?10
 )
 RETURNING id
 `
@@ -185,6 +188,7 @@ type InsertWatchEventParams struct {
 	MovieID       sql.NullInt64
 	EpisodeID     sql.NullInt64
 	WatchedAt     string
+	WatchedOn     sql.NullString
 	Source        string
 	SourceEventID sql.NullString
 	Payload       sql.NullString
@@ -199,6 +203,7 @@ func (q *Queries) InsertWatchEvent(ctx context.Context, arg InsertWatchEventPara
 		arg.MovieID,
 		arg.EpisodeID,
 		arg.WatchedAt,
+		arg.WatchedOn,
 		arg.Source,
 		arg.SourceEventID,
 		arg.Payload,
@@ -363,7 +368,7 @@ func (q *Queries) MovieToMark(ctx context.Context, tmdbID int64) (MovieToMarkRow
 }
 
 const movieWatches = `-- name: MovieWatches :many
-SELECT w.id, w.watched_at, w.source FROM watch_events w
+SELECT w.id, w.watched_at, w.watched_on, w.source FROM watch_events w
 JOIN movies m ON m.id = w.movie_id
 WHERE w.user_id = ?1
     AND m.tmdb_id = ?2
@@ -379,6 +384,7 @@ type MovieWatchesParams struct {
 type MovieWatchesRow struct {
 	ID        int64
 	WatchedAt string
+	WatchedOn sql.NullString
 	Source    string
 }
 
@@ -392,7 +398,12 @@ func (q *Queries) MovieWatches(ctx context.Context, arg MovieWatchesParams) ([]M
 	items := []MovieWatchesRow{}
 	for rows.Next() {
 		var i MovieWatchesRow
-		if err := rows.Scan(&i.ID, &i.WatchedAt, &i.Source); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.WatchedAt,
+			&i.WatchedOn,
+			&i.Source,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -443,7 +454,8 @@ func (q *Queries) ShowToMark(ctx context.Context, tmdbID int64) (int64, error) {
 }
 
 const showWatchedEpisodes = `-- name: ShowWatchedEpisodes :many
-SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at
+SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at,
+    w.watched_on AS last_watched_on
 FROM watch_events w
 JOIN episodes e ON e.id = w.episode_id
 JOIN shows s ON s.id = e.show_id
@@ -463,10 +475,14 @@ type ShowWatchedEpisodesRow struct {
 	TmdbID        int64
 	Plays         int64
 	LastWatchedAt string
+	LastWatchedOn sql.NullString
 }
 
 // ShowWatchedEpisodes counts a user's kept watches of each episode of a show
-// (listed or not), by TMDB episode ID.
+// (listed or not), by TMDB episode ID. last_watched_on is the latest
+// watch's watched_on: with a single max() SQLite takes bare columns from the
+// row holding the max, and two kept watches of one episode never share a
+// time (the dedupe window merges them).
 func (q *Queries) ShowWatchedEpisodes(ctx context.Context, arg ShowWatchedEpisodesParams) ([]ShowWatchedEpisodesRow, error) {
 	rows, err := q.db.QueryContext(ctx, showWatchedEpisodes, arg.UserID, arg.ShowTmdbID)
 	if err != nil {
@@ -476,7 +492,12 @@ func (q *Queries) ShowWatchedEpisodes(ctx context.Context, arg ShowWatchedEpisod
 	items := []ShowWatchedEpisodesRow{}
 	for rows.Next() {
 		var i ShowWatchedEpisodesRow
-		if err := rows.Scan(&i.TmdbID, &i.Plays, &i.LastWatchedAt); err != nil {
+		if err := rows.Scan(
+			&i.TmdbID,
+			&i.Plays,
+			&i.LastWatchedAt,
+			&i.LastWatchedOn,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -623,7 +644,7 @@ func (q *Queries) VisibleSeasonToMark(ctx context.Context, arg VisibleSeasonToMa
 
 const watchEventBySource = `-- name: WatchEventBySource :one
 
-SELECT id, merged_into_id, watched_at FROM watch_events
+SELECT id, merged_into_id, watched_at, watched_on FROM watch_events
 WHERE user_id = ?1
   AND source = ?2
   AND source_event_id = ?3
@@ -639,6 +660,7 @@ type WatchEventBySourceRow struct {
 	ID           int64
 	MergedIntoID sql.NullInt64
 	WatchedAt    string
+	WatchedOn    sql.NullString
 }
 
 // Watch history. internal/tracking owns the rules (source idempotency,
@@ -649,6 +671,11 @@ type WatchEventBySourceRow struct {
 func (q *Queries) WatchEventBySource(ctx context.Context, arg WatchEventBySourceParams) (WatchEventBySourceRow, error) {
 	row := q.db.QueryRowContext(ctx, watchEventBySource, arg.UserID, arg.Source, arg.SourceEventID)
 	var i WatchEventBySourceRow
-	err := row.Scan(&i.ID, &i.MergedIntoID, &i.WatchedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.MergedIntoID,
+		&i.WatchedAt,
+		&i.WatchedOn,
+	)
 	return i, err
 }

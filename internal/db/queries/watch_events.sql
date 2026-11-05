@@ -5,7 +5,7 @@
 -- WatchEventBySource finds an event already recorded from a source, so a
 -- repeated webhook or re-import returns it instead of adding a row.
 -- name: WatchEventBySource :one
-SELECT id, merged_into_id, watched_at FROM watch_events
+SELECT id, merged_into_id, watched_at, watched_on FROM watch_events
 WHERE user_id = sqlc.arg(user_id)
   AND source = sqlc.arg(source)
   AND source_event_id = sqlc.arg(source_event_id);
@@ -35,13 +35,14 @@ ORDER BY id;
 -- InsertWatchEvent stores one event. merged_into_id is NULL for a kept watch.
 -- name: InsertWatchEvent :one
 INSERT INTO watch_events (
-    user_id, movie_id, episode_id, watched_at, source, source_event_id,
-    payload, merged_into_id, created_at
+    user_id, movie_id, episode_id, watched_at, watched_on, source,
+    source_event_id, payload, merged_into_id, created_at
 ) VALUES (
     sqlc.arg(user_id),
     sqlc.narg(movie_id),
     sqlc.narg(episode_id),
     sqlc.arg(watched_at),
+    sqlc.narg(watched_on),
     sqlc.arg(source),
     sqlc.narg(source_event_id),
     sqlc.narg(payload),
@@ -147,7 +148,7 @@ ORDER BY s.season_number, e.episode_number, e.tmdb_id;
 -- Pass the last row's watched_at and id to get the next page; the first
 -- page passes a watched_at after every row and the largest id.
 -- name: History :many
-SELECT w.id, w.watched_at, w.source,
+SELECT w.id, w.watched_at, w.watched_on, w.source,
     m.tmdb_id AS movie_tmdb_id, m.title AS movie_title,
     m.poster_path AS movie_poster_path, m.release_date AS movie_release_date,
     m.runtime AS movie_runtime, m.vote_average AS movie_vote_average,
@@ -168,7 +169,7 @@ LIMIT sqlc.arg(row_limit);
 
 -- MovieWatches lists a user's kept watches of a movie, newest first.
 -- name: MovieWatches :many
-SELECT w.id, w.watched_at, w.source FROM watch_events w
+SELECT w.id, w.watched_at, w.watched_on, w.source FROM watch_events w
 JOIN movies m ON m.id = w.movie_id
 WHERE w.user_id = sqlc.arg(user_id)
     AND m.tmdb_id = sqlc.arg(movie_tmdb_id)
@@ -176,9 +177,13 @@ WHERE w.user_id = sqlc.arg(user_id)
 ORDER BY w.watched_at DESC, w.id DESC;
 
 -- ShowWatchedEpisodes counts a user's kept watches of each episode of a show
--- (listed or not), by TMDB episode ID.
+-- (listed or not), by TMDB episode ID. last_watched_on is the latest
+-- watch's watched_on: with a single max() SQLite takes bare columns from the
+-- row holding the max, and two kept watches of one episode never share a
+-- time (the dedupe window merges them).
 -- name: ShowWatchedEpisodes :many
-SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at
+SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at,
+    w.watched_on AS last_watched_on
 FROM watch_events w
 JOIN episodes e ON e.id = w.episode_id
 JOIN shows s ON s.id = e.show_id

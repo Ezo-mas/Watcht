@@ -69,7 +69,8 @@ func decodeWhen(w http.ResponseWriter, r *http.Request) (tracking.When, bool) {
 		case http.StatusRequestEntityTooLarge:
 			writeError(w, rec.status, "too_large", "the request body is too large")
 		default:
-			invalidTrackingRequest(w)
+			// Not decodeJSON's message, which can quote the input.
+			writeError(w, http.StatusBadRequest, "invalid_json", "the request body isn't valid JSON for this endpoint")
 		}
 		return tracking.When{}, false
 	}
@@ -91,8 +92,10 @@ func decodeWhen(w http.ResponseWriter, r *http.Request) (tracking.When, bool) {
 		}
 		when.At = at
 	}
+	// release_date is true or absent: false would read as "now", which an
+	// omitted time already means.
 	if len(req.ReleaseDate) != 0 {
-		if string(req.ReleaseDate) == "null" || json.Unmarshal(req.ReleaseDate, &when.ReleaseDate) != nil {
+		if json.Unmarshal(req.ReleaseDate, &when.ReleaseDate) != nil || !when.ReleaseDate {
 			invalidTrackingRequest(w)
 			return when, false
 		}
@@ -129,7 +132,7 @@ func (h *trackingHandlers) markOne(w http.ResponseWriter, r *http.Request, u aut
 	writeJSON(w, http.StatusCreated, struct {
 		Watch      watchJSON `json:"watch"`
 		MergedInto *int64    `json:"merged_into"`
-	}{watchResponse(tracking.Watch{ID: result.ID, WatchedAt: result.WatchedAt, Source: tracking.SourceManual}), merged})
+	}{watchResponse(tracking.Watch{ID: result.ID, WatchedAt: result.WatchedAt, WatchedOn: result.WatchedOn, Source: tracking.SourceManual}), merged})
 }
 
 func (h *trackingHandlers) markSeason(w http.ResponseWriter, r *http.Request, u auth.User) {
@@ -215,7 +218,7 @@ func (h *trackingHandlers) showWatched(w http.ResponseWriter, r *http.Request, u
 	}
 	out := make([]episodeWatchedJSON, 0, len(episodes))
 	for _, v := range episodes {
-		out = append(out, episodeWatchedJSON{v.TMDBID, v.Plays, v.LastWatchedAt.UTC().Format(time.RFC3339)})
+		out = append(out, episodeWatchedJSON{v.TMDBID, v.Plays, v.LastWatchedAt.UTC().Format(time.RFC3339), optional(v.LastWatchedOn)})
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Episodes []episodeWatchedJSON `json:"episodes"`
@@ -305,20 +308,33 @@ func (h *trackingHandlers) fail(w http.ResponseWriter, r *http.Request, err erro
 	}
 }
 
+// watchJSON is a watch. watched_on is its date (YYYY-MM-DD) when it has no
+// time, as for a mark at the release date, and null otherwise; watched_at is
+// then noon UTC on that date and only orders it.
 type watchJSON struct {
 	ID        int64           `json:"id"`
 	WatchedAt string          `json:"watched_at"`
+	WatchedOn *string         `json:"watched_on"`
 	Source    tracking.Source `json:"source"`
 }
 
 func watchResponse(v tracking.Watch) watchJSON {
-	return watchJSON{v.ID, v.WatchedAt.UTC().Format(time.RFC3339), v.Source}
+	return watchJSON{v.ID, v.WatchedAt.UTC().Format(time.RFC3339), optional(v.WatchedOn), v.Source}
+}
+
+// optional is s, or nil when it's empty.
+func optional(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 type episodeWatchedJSON struct {
-	TMDBID        int    `json:"tmdb_id"`
-	Plays         int    `json:"plays"`
-	LastWatchedAt string `json:"last_watched_at"`
+	TMDBID        int     `json:"tmdb_id"`
+	Plays         int     `json:"plays"`
+	LastWatchedAt string  `json:"last_watched_at"`
+	LastWatchedOn *string `json:"last_watched_on"`
 }
 
 type historyEntryJSON struct {

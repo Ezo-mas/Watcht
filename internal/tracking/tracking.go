@@ -69,7 +69,12 @@ type Event struct {
 	MovieID   int64
 	EpisodeID int64
 	WatchedAt time.Time
-	Source    Source
+	// DateOnly means the source gave a calendar date, not a time: the date
+	// of WatchedAt in UTC is the watch. It's stored as watched_on, with
+	// noon UTC on it as the watch time, so it sorts and dedupes with timed
+	// watches.
+	DateOnly bool
+	Source   Source
 	// SourceEventID is the source's own ID for the event. Empty for manual
 	// marks, required for every other source.
 	SourceEventID string
@@ -84,6 +89,9 @@ type Result struct {
 	ID int64
 	// WatchedAt is the stored event's watch time.
 	WatchedAt time.Time
+	// WatchedOn is the stored event's date (YYYY-MM-DD) when it has no time
+	// (see Event.DateOnly), or empty.
+	WatchedOn string
 	// MergedInto is the kept watch this event counts as, or 0 if the event
 	// is itself a kept watch.
 	MergedInto int64
@@ -144,7 +152,7 @@ func (s *Service) Record(ctx context.Context, e Event) (Result, error) {
 // (marking a season, an import) can check and insert atomically. e must
 // already be validated.
 func (s *Service) record(ctx context.Context, q *sqlc.Queries, e Event) (Result, error) {
-	watchedAt := e.WatchedAt.UTC().Truncate(time.Second)
+	watchedAt, watchedOn := e.watchTime()
 	if e.SourceEventID != "" {
 		prev, err := q.WatchEventBySource(ctx, sqlc.WatchEventBySourceParams{
 			UserID: e.UserID, Source: string(e.Source),
@@ -155,7 +163,7 @@ func (s *Service) record(ctx context.Context, q *sqlc.Queries, e Event) (Result,
 			if err != nil {
 				return Result{}, err
 			}
-			return Result{ID: prev.ID, WatchedAt: at, MergedInto: prev.MergedIntoID.Int64, Duplicate: true}, nil
+			return Result{ID: prev.ID, WatchedAt: at, WatchedOn: prev.WatchedOn.String, MergedInto: prev.MergedIntoID.Int64, Duplicate: true}, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return Result{}, fmt.Errorf("find source event: %w", err)
@@ -171,6 +179,7 @@ func (s *Service) record(ctx context.Context, q *sqlc.Queries, e Event) (Result,
 		MovieID:       nullID(e.MovieID),
 		EpisodeID:     nullID(e.EpisodeID),
 		WatchedAt:     db.Timestamp(watchedAt),
+		WatchedOn:     sql.NullString{String: watchedOn, Valid: watchedOn != ""},
 		Source:        string(e.Source),
 		SourceEventID: sql.NullString{String: e.SourceEventID, Valid: e.SourceEventID != ""},
 		Payload:       sql.NullString{String: string(e.Payload), Valid: len(e.Payload) > 0},
@@ -180,7 +189,19 @@ func (s *Service) record(ctx context.Context, q *sqlc.Queries, e Event) (Result,
 	if err != nil {
 		return Result{}, fmt.Errorf("insert watch event: %w", err)
 	}
-	return Result{ID: id, WatchedAt: watchedAt, MergedInto: kept}, nil
+	return Result{ID: id, WatchedAt: watchedAt, WatchedOn: watchedOn, MergedInto: kept}, nil
+}
+
+// watchTime is the time an event is stored at, to the whole second, and its
+// date when it has no time: noon UTC on that date.
+func (e Event) watchTime() (at time.Time, on string) {
+	at = e.WatchedAt.UTC().Truncate(time.Second)
+	if !e.DateOnly {
+		return at, ""
+	}
+	y, m, d := at.Date()
+	at = time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+	return at, at.Format(time.DateOnly)
 }
 
 // nearestKept checks the item exists and returns the kept watch of it
@@ -269,6 +290,7 @@ func (s *Service) Remove(ctx context.Context, userID, eventID int64) error {
 }
 
 func (s *Service) validate(e Event) error {
+	at, _ := e.watchTime()
 	switch {
 	case e.UserID <= 0:
 		return fmt.Errorf("%w: no user", ErrInvalid)
@@ -276,10 +298,10 @@ func (s *Service) validate(e Event) error {
 		return fmt.Errorf("%w: exactly one of movie and episode is required", ErrInvalid)
 	case e.WatchedAt.Truncate(time.Second).IsZero(): // stored to the second
 		return fmt.Errorf("%w: no watch time", ErrInvalid)
-	case e.WatchedAt.After(s.now().Add(futureSlack)):
+	case at.After(s.now().Add(futureSlack)):
 		return fmt.Errorf("%w: watch time is in the future", ErrInvalid)
 	// Years 1 to 9999 fit the stored layout; films go back to the 1880s.
-	case e.WatchedAt.UTC().Year() < 1 || e.WatchedAt.UTC().Year() > 9999:
+	case at.Year() < 1 || at.Year() > 9999:
 		return fmt.Errorf("%w: watch time out of range", ErrInvalid)
 	case !e.Source.valid():
 		return fmt.Errorf("%w: unknown source", ErrInvalid)

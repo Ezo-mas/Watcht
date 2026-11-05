@@ -11,7 +11,7 @@
 	import PosterCard from '#lib/components/PosterCard.svelte';
 	import WatchedCheck from '#lib/components/WatchedCheck.svelte';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
-	import { formatDateTime } from '#lib/format.js';
+	import { formatWatch } from '#lib/format.js';
 	import { dayHeading, dayTotal, groupByDay, insertEntry } from '#lib/history.js';
 	import { episodeCode, tmdbPercent } from '#lib/media.js';
 	import { searchOverlay } from '#lib/search-overlay.svelte.js';
@@ -110,7 +110,7 @@
 		const at = entries.findIndex((e) => e.id === entry.id);
 		const next = entries[at + 1] ?? entries[at - 1];
 		entries = entries.filter((e) => e.id !== entry.id);
-		note = `Removed ${describe(entry)}, watched ${formatDateTime(entry.watched_at)}.`;
+		note = `Removed ${describe(entry)}, watched ${formatWatch(entry)}.`;
 		await tick();
 		// Focus the next card's check, so a run of removals stays in place;
 		// the heading when the list is now empty.
@@ -136,14 +136,14 @@
 			// A repeat within 3 hours counts as the same watch: no new card.
 			const kept = entries.find((e) => e.id === res.merged_into);
 			note = kept
-				? `Already counted: ${describe(entry)} has a play at ${formatDateTime(kept.watched_at)}, and plays within 3 hours count once.`
+				? `Already counted: ${describe(entry)} has a play at ${formatWatch(kept)}, and plays within 3 hours count once.`
 				: `Already counted: ${describe(entry)} has a play within 3 hours of that time.`;
 			return '';
 		}
 		const added = { ...entry, ...res.watch };
 		const placed = insertEntry(entries, added, cursor !== null);
 		entries = placed.entries;
-		const at = formatDateTime(added.watched_at);
+		const at = formatWatch(added);
 		note = placed.inserted
 			? `Added to your history: ${describe(entry)}, ${at}.`
 			: `Added to your history: ${describe(entry)}, ${at}. It's further down; scroll to reach it.`;
@@ -240,7 +240,7 @@
 					{@const title = ep ? ep.name : (entry.movie?.title ?? '')}
 					{@const source = sourceLabel(entry.source)}
 					{@const rating = tmdbPercent(ep ? ep.vote_average : (entry.movie?.vote_average ?? 0))}
-					{@const when = formatDateTime(entry.watched_at)}
+					{@const when = formatWatch(entry)}
 					<li>
 						<PosterCard
 							href={hrefOf(entry)}
@@ -261,8 +261,8 @@
 								{title}
 							</span>
 							<span class="mt-0.5 block truncate text-xs text-muted tabular-nums">
-								<time datetime={entry.watched_at}>{when}</time>{#if source}<span class="sr-only"
-										>, recorded by {source}</span
+								<time datetime={entry.watched_on ?? entry.watched_at}>{when}</time>{#if source}<span
+										class="sr-only">, recorded by {source}</span
 									>{/if}
 							</span>
 
@@ -271,6 +271,7 @@
 								<WatchedCheck
 									name={describe(entry)}
 									watchedAt={entry.watched_at}
+									watchedOn={entry.watched_on}
 									runtime={ep ? ep.runtime : (entry.movie?.runtime ?? 0)}
 									release={releaseOf(entry)}
 									buttonId="check-{entry.id}"

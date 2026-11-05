@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import type { MarkWhen } from '#lib/api/types.js';
 	import { placeNear } from '#lib/anchor.js';
-	import { formatWatchDate } from '#lib/format.js';
+	import { formatWatchDay } from '#lib/format.js';
 	import { formatRuntime } from '#lib/media.js';
 	import type { ReleaseOption } from '#lib/when.js';
 	import Notice from './Notice.svelte';
@@ -13,6 +13,8 @@
 		name: string;
 		/** The watch's time (RFC 3339), shown in the tooltip. */
 		watchedAt: string;
+		/** The watch's date when it has no time (YYYY-MM-DD), shown instead. */
+		watchedOn: string | null;
 		/** Minutes; 0 when unknown (the tooltip leaves it out). */
 		runtime: number;
 		/** The release-date option for "Add another play". */
@@ -30,7 +32,8 @@
 		onadd: (when: MarkWhen) => Promise<string>;
 	}
 
-	let { name, watchedAt, runtime, release, buttonId, zoneNote, onremove, onadd }: Props = $props();
+	let { name, watchedAt, watchedOn, runtime, release, buttonId, zoneNote, onremove, onadd }: Props =
+		$props();
 
 	// A watched check on a poster card's bar: a sage square with a check.
 	// Hover or keyboard focus shows a tooltip with when it was watched; a
@@ -52,7 +55,7 @@
 	let busy = $state<'remove' | 'add' | null>(null);
 	let error = $state('');
 
-	const date = $derived(formatWatchDate(watchedAt));
+	const date = $derived(formatWatchDay({ watched_at: watchedAt, watched_on: watchedOn }));
 	const length = $derived(formatRuntime(runtime));
 
 	function viewport() {

@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import type { Episode, EpisodeWatched, MarkWhen } from '#lib/api/types.js';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
-	import { formatDateTime, formatDay } from '#lib/format.js';
+	import { formatDay, formatWatch } from '#lib/format.js';
 	import { episodeCode, formatRuntime } from '#lib/media.js';
 	import { hasAired, playsLabel } from '#lib/watched.js';
 	import { releaseOption } from '#lib/when.js';
@@ -94,8 +94,11 @@
 				<Badge><span class="sr-only">Runtime </span>{runtime}</Badge>
 			{/if}
 			{#if watched}
-				<Badge title="Last watched {formatDateTime(watched.last_watched_at)}"
-					><span class="sr-only">Watched,&nbsp;</span>{playsLabel(watched.plays)}</Badge
+				<Badge
+					title="Last watched {formatWatch({
+						watched_at: watched.last_watched_at,
+						watched_on: watched.last_watched_on
+					})}"><span class="sr-only">Watched,&nbsp;</span>{playsLabel(watched.plays)}</Badge
 				>
 			{/if}
 		</div>

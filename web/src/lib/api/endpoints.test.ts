@@ -160,7 +160,7 @@ describe('catalog endpoints', () => {
 
 describe('tracking endpoints', () => {
 	const result = {
-		watch: { id: 3, watched_at: '2026-11-03T20:00:00Z', source: 'manual' },
+		watch: { id: 3, watched_at: '2026-11-03T20:00:00Z', watched_on: null, source: 'manual' },
 		merged_into: null
 	};
 
@@ -213,7 +213,9 @@ describe('tracking endpoints', () => {
 		let f = recorder(200, { watches: [result.watch] });
 		expect(await movieWatches(603, f)).toEqual([result.watch]);
 		expect(sent(f)).toMatchObject({ path: '/api/v1/movies/603/watches', method: 'GET' });
-		const episodes = [{ tmdb_id: 62085, plays: 2, last_watched_at: '2026-11-03T20:00:00Z' }];
+		const episodes = [
+			{ tmdb_id: 62085, plays: 2, last_watched_at: '2026-11-03T20:00:00Z', last_watched_on: null }
+		];
 		f = recorder(200, { episodes });
 		expect(await showWatched(1396, f)).toEqual(episodes);
 		expect(sent(f)).toMatchObject({ path: '/api/v1/shows/1396/watched', method: 'GET' });

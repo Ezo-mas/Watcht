@@ -1,5 +1,5 @@
 import type { HistoryEntry } from './api/types';
-import { dayKey } from './format';
+import { watchDay } from './format';
 import { formatRuntime } from './media';
 
 // The /history page: entries grouped under day headings, each with the
@@ -12,19 +12,24 @@ export interface HistoryDay {
 }
 
 /**
- * Groups entries (newest first, as the API sends them) by the calendar day
- * of their watch time in `timeZone` (the browser's when undefined). Order
- * is kept; a day split across two pages becomes one group.
+ * Groups entries (newest first, as the API sends them) by their day: the
+ * date of a watch with no time, else the calendar day of its watch time in
+ * `timeZone` (the browser's when undefined). Days are newest first, entries
+ * keep their order, and a day split across two pages becomes one group.
+ *
+ * Days are merged by key, not only when next to each other: a date-only
+ * watch sorts at noon UTC, so east of UTC+12 a timed watch just before it
+ * can fall on the next local day, and the same day can come up twice.
  */
 export function groupByDay(entries: HistoryEntry[], timeZone?: string): HistoryDay[] {
-	const days: HistoryDay[] = [];
+	const byKey = new Map<string, HistoryDay>();
 	for (const entry of entries) {
-		const key = dayKey(new Date(entry.watched_at), timeZone);
-		const last = days.at(-1);
-		if (last?.key === key) last.entries.push(entry);
-		else days.push({ key, entries: [entry] });
+		const key = watchDay(entry, timeZone);
+		const day = byKey.get(key);
+		if (day) day.entries.push(entry);
+		else byKey.set(key, { key, entries: [entry] });
 	}
-	return days;
+	return [...byKey.values()].sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
 }
 
 /**

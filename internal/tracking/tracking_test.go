@@ -470,6 +470,50 @@ func TestDeletingUserDeletesWatches(t *testing.T) {
 	}
 }
 
+// A date-only event is stored as its UTC date, at noon UTC on it.
+func TestRecordDateOnly(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	// The date is the UTC date of WatchedAt, whatever its zone or time of day.
+	for _, tc := range []struct {
+		at   time.Time
+		want string
+	}{
+		{time.Date(2020, 5, 5, 23, 30, 0, 0, time.UTC), "2020-05-05"},
+		{time.Date(2020, 5, 7, 1, 0, 0, 0, time.FixedZone("UTC+14", 14*3600)), "2020-05-06"},
+		{time.Date(2020, 5, 8, 0, 0, 0, 0, time.UTC), "2020-05-08"},
+	} {
+		r := e.record(t, Event{UserID: e.user, MovieID: e.movie, WatchedAt: tc.at, DateOnly: true, Source: SourceManual})
+		noon := tc.want + "T12:00:00Z"
+		if r.WatchedOn != tc.want || db.Timestamp(r.WatchedAt) != noon {
+			t.Errorf("%v: Result = %+v, want %s at noon UTC", tc.at, r, tc.want)
+		}
+		var at, on string
+		if err := e.d.Read.QueryRow(`SELECT watched_at, watched_on FROM watch_events WHERE id = ?`, r.ID).Scan(&at, &on); err != nil {
+			t.Fatal(err)
+		}
+		if at != noon || on != tc.want {
+			t.Errorf("%v: stored %s / %s, want %s / %s", tc.at, at, on, noon, tc.want)
+		}
+	}
+	// The future check is on the stored time: tomorrow's noon is refused,
+	// and a time past now on a date whose noon has passed is accepted.
+	morning := Event{UserID: e.user, MovieID: e.movie2, WatchedAt: testNow.Add(24 * time.Hour).Truncate(24 * time.Hour), DateOnly: true, Source: SourceManual}
+	if _, err := e.s.Record(ctx, morning); !errors.Is(err, ErrInvalid) {
+		t.Errorf("date-only tomorrow: err = %v, want ErrInvalid", err)
+	}
+	late := Event{UserID: e.user, EpisodeID: e.episode, WatchedAt: testNow.Add(3 * time.Hour), DateOnly: true, Source: SourceManual}
+	if r, err := e.s.Record(ctx, late); err != nil || r.WatchedOn != "2026-11-03" {
+		t.Errorf("date-only today, time past now: %+v, %v; want stored as 2026-11-03", r, err)
+	}
+	// A source repeating a date-only event gets the stored date back.
+	px := Event{UserID: e.user, EpisodeID: e.episode2, WatchedAt: time.Date(2020, 1, 2, 3, 0, 0, 0, time.UTC), DateOnly: true, Source: SourcePlex, SourceEventID: "px-d"}
+	first := e.record(t, px)
+	if again := e.record(t, px); !again.Duplicate || again.ID != first.ID || again.WatchedOn != "2020-01-02" {
+		t.Errorf("repeated date-only event: %+v, want a duplicate of %d on 2020-01-02", again, first.ID)
+	}
+}
+
 // The table's CHECKs refuse rows that Record would never write.
 func TestSchemaRejectsBadRows(t *testing.T) {
 	e := newEnv(t)
@@ -491,6 +535,17 @@ func TestSchemaRejectsBadRows(t *testing.T) {
 		if _, err := e.d.Write.Exec(insert, args...); err == nil {
 			t.Errorf("%s: insert succeeded", name)
 		}
+	}
+	// watched_on must be a date, and watched_at noon UTC on it.
+	const dated = `INSERT INTO watch_events (user_id, movie_id, watched_at, watched_on, source, created_at)
+		VALUES (?, ?, ?, ?, 'manual', ?)`
+	for _, row := range [][2]string{{"2026-11-03T12:00:00Z", "2026-11-04"}, {"2026-11-03T20:00:00Z", "2026-11-03"}, {"2026-11-03T12:00:00Z", "2026-11-3"}} {
+		if _, err := e.d.Write.Exec(dated, e.user, e.movie, row[0], row[1], ts); err == nil {
+			t.Errorf("watched_at %s, watched_on %s: insert succeeded", row[0], row[1])
+		}
+	}
+	if _, err := e.d.Write.Exec(dated, e.user, e.movie, "2026-11-03T12:00:00Z", "2026-11-03", ts); err != nil {
+		t.Errorf("matching watched_on: %v", err)
 	}
 	if _, err := e.d.Write.Exec(insert, e.user, e.movie, nil, ts, "plex", "x", nil, nil, ts); err != nil {
 		t.Fatalf("first: %v", err)

@@ -18,6 +18,9 @@ const MaxHistoryLimit = 100
 type Watch struct {
 	ID        int64
 	WatchedAt time.Time
+	// WatchedOn is the date (YYYY-MM-DD) of a watch with no time (see
+	// Event.DateOnly), or empty.
+	WatchedOn string
 	Source    Source
 }
 
@@ -65,11 +68,13 @@ type Cursor struct {
 	ID        int64
 }
 
-// EpisodeWatched is how often a user watched one episode.
+// EpisodeWatched is how often a user watched one episode. LastWatchedOn is
+// the last watch's date when it has no time, or empty.
 type EpisodeWatched struct {
 	TMDBID        int
 	Plays         int
 	LastWatchedAt time.Time
+	LastWatchedOn string
 }
 
 // History returns up to limit of the user's watches after the cursor, newest
@@ -90,7 +95,7 @@ func (s *Service) History(ctx context.Context, userID int64, after Cursor, limit
 		if err != nil {
 			return nil, err
 		}
-		e := HistoryEntry{Watch: Watch{ID: r.ID, WatchedAt: at, Source: Source(r.Source)}}
+		e := HistoryEntry{Watch: Watch{ID: r.ID, WatchedAt: at, WatchedOn: r.WatchedOn.String, Source: Source(r.Source)}}
 		if r.MovieTmdbID.Valid {
 			e.Movie = &HistoryMovie{
 				TMDBID:      int(r.MovieTmdbID.Int64),
@@ -133,7 +138,7 @@ func (s *Service) MovieWatches(ctx context.Context, userID int64, tmdbID int) ([
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, Watch{ID: r.ID, WatchedAt: at, Source: Source(r.Source)})
+		out = append(out, Watch{ID: r.ID, WatchedAt: at, WatchedOn: r.WatchedOn.String, Source: Source(r.Source)})
 	}
 	return out, nil
 }
@@ -152,7 +157,7 @@ func (s *Service) ShowWatched(ctx context.Context, userID int64, showTMDBID int)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, EpisodeWatched{TMDBID: int(r.TmdbID), Plays: int(r.Plays), LastWatchedAt: at})
+		out = append(out, EpisodeWatched{TMDBID: int(r.TmdbID), Plays: int(r.Plays), LastWatchedAt: at, LastWatchedOn: r.LastWatchedOn.String})
 	}
 	return out, nil
 }
