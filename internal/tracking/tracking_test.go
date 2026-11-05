@@ -114,8 +114,8 @@ func TestRecordStoresEveryField(t *testing.T) {
 		UserID: e.user, EpisodeID: e.episode, WatchedAt: at,
 		Source: SourceJellyfin, SourceEventID: "jf-1", Payload: json.RawMessage(`{"a":1}`),
 	})
-	if res.MergedInto != 0 || res.Duplicate {
-		t.Errorf("Result = %+v, want a kept new watch", res)
+	if res.MergedInto != 0 || res.Duplicate || !res.WatchedAt.Equal(time.Date(2026, 11, 3, 16, 30, 15, 0, time.UTC)) {
+		t.Errorf("Result = %+v, want a kept new watch at 16:30:15 UTC", res)
 	}
 	var got sqlc.WatchEvent
 	err := e.d.Read.QueryRow(`SELECT id, user_id, movie_id, episode_id, watched_at, source,
@@ -316,7 +316,7 @@ func TestSourceEventIsIdempotent(t *testing.T) {
 	ev.WatchedAt = testNow.Add(-10 * time.Hour)
 	ev.Payload = json.RawMessage(`{}`)
 	again := e.record(t, ev)
-	if !again.Duplicate || again.ID != first.ID || again.MergedInto != 0 {
+	if !again.Duplicate || again.ID != first.ID || again.MergedInto != 0 || !again.WatchedAt.Equal(first.WatchedAt) {
 		t.Errorf("resend Result = %+v, want duplicate of %d", again, first.ID)
 	}
 	if n := e.count(t); n != 1 {
@@ -348,17 +348,18 @@ func TestRecordRejectsInvalidEvents(t *testing.T) {
 	e := newEnv(t)
 	at := testNow.Add(-time.Hour)
 	tests := map[string]Event{
-		"no user":              {MovieID: e.movie, WatchedAt: at, Source: SourceManual},
-		"no item":              {UserID: e.user, WatchedAt: at, Source: SourceManual},
-		"two items":            {UserID: e.user, MovieID: e.movie, EpisodeID: e.episode, WatchedAt: at, Source: SourceManual},
-		"negative item":        {UserID: e.user, MovieID: -1, WatchedAt: at, Source: SourceManual},
-		"no time":              {UserID: e.user, MovieID: e.movie, Source: SourceManual},
-		"future":               {UserID: e.user, MovieID: e.movie, WatchedAt: testNow.Add(5*time.Minute + time.Second), Source: SourceManual},
-		"year 0":               {UserID: e.user, MovieID: e.movie, WatchedAt: time.Date(0, 12, 31, 0, 0, 0, 0, time.UTC), Source: SourceManual},
-		"unknown source":       {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: "trakt"},
-		"manual with event ID": {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceManual, SourceEventID: "x"},
-		"import without ID":    {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceTraktImport},
-		"bad payload":          {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourcePlex, SourceEventID: "x", Payload: json.RawMessage(`{`)},
+		"no user":               {MovieID: e.movie, WatchedAt: at, Source: SourceManual},
+		"no item":               {UserID: e.user, WatchedAt: at, Source: SourceManual},
+		"two items":             {UserID: e.user, MovieID: e.movie, EpisodeID: e.episode, WatchedAt: at, Source: SourceManual},
+		"negative item":         {UserID: e.user, MovieID: -1, WatchedAt: at, Source: SourceManual},
+		"no time":               {UserID: e.user, MovieID: e.movie, Source: SourceManual},
+		"zero after truncation": {UserID: e.user, MovieID: e.movie, WatchedAt: time.Time{}.Add(500 * time.Millisecond), Source: SourceManual},
+		"future":                {UserID: e.user, MovieID: e.movie, WatchedAt: testNow.Add(5*time.Minute + time.Second), Source: SourceManual},
+		"year 0":                {UserID: e.user, MovieID: e.movie, WatchedAt: time.Date(0, 12, 31, 0, 0, 0, 0, time.UTC), Source: SourceManual},
+		"unknown source":        {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: "trakt"},
+		"manual with event ID":  {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceManual, SourceEventID: "x"},
+		"import without ID":     {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourceTraktImport},
+		"bad payload":           {UserID: e.user, MovieID: e.movie, WatchedAt: at, Source: SourcePlex, SourceEventID: "x", Payload: json.RawMessage(`{`)},
 	}
 	for name, ev := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -469,6 +470,50 @@ func TestDeletingUserDeletesWatches(t *testing.T) {
 	}
 }
 
+// A date-only event is stored as its UTC date, at noon UTC on it.
+func TestRecordDateOnly(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	// The date is the UTC date of WatchedAt, whatever its zone or time of day.
+	for _, tc := range []struct {
+		at   time.Time
+		want string
+	}{
+		{time.Date(2020, 5, 5, 23, 30, 0, 0, time.UTC), "2020-05-05"},
+		{time.Date(2020, 5, 7, 1, 0, 0, 0, time.FixedZone("UTC+14", 14*3600)), "2020-05-06"},
+		{time.Date(2020, 5, 8, 0, 0, 0, 0, time.UTC), "2020-05-08"},
+	} {
+		r := e.record(t, Event{UserID: e.user, MovieID: e.movie, WatchedAt: tc.at, DateOnly: true, Source: SourceManual})
+		noon := tc.want + "T12:00:00Z"
+		if r.WatchedOn != tc.want || db.Timestamp(r.WatchedAt) != noon {
+			t.Errorf("%v: Result = %+v, want %s at noon UTC", tc.at, r, tc.want)
+		}
+		var at, on string
+		if err := e.d.Read.QueryRow(`SELECT watched_at, watched_on FROM watch_events WHERE id = ?`, r.ID).Scan(&at, &on); err != nil {
+			t.Fatal(err)
+		}
+		if at != noon || on != tc.want {
+			t.Errorf("%v: stored %s / %s, want %s / %s", tc.at, at, on, noon, tc.want)
+		}
+	}
+	// The future check is on the stored time: tomorrow's noon is refused,
+	// and a time past now on a date whose noon has passed is accepted.
+	morning := Event{UserID: e.user, MovieID: e.movie2, WatchedAt: testNow.Add(24 * time.Hour).Truncate(24 * time.Hour), DateOnly: true, Source: SourceManual}
+	if _, err := e.s.Record(ctx, morning); !errors.Is(err, ErrInvalid) {
+		t.Errorf("date-only tomorrow: err = %v, want ErrInvalid", err)
+	}
+	late := Event{UserID: e.user, EpisodeID: e.episode, WatchedAt: testNow.Add(3 * time.Hour), DateOnly: true, Source: SourceManual}
+	if r, err := e.s.Record(ctx, late); err != nil || r.WatchedOn != "2026-11-03" {
+		t.Errorf("date-only today, time past now: %+v, %v; want stored as 2026-11-03", r, err)
+	}
+	// A source repeating a date-only event gets the stored date back.
+	px := Event{UserID: e.user, EpisodeID: e.episode2, WatchedAt: time.Date(2020, 1, 2, 3, 0, 0, 0, time.UTC), DateOnly: true, Source: SourcePlex, SourceEventID: "px-d"}
+	first := e.record(t, px)
+	if again := e.record(t, px); !again.Duplicate || again.ID != first.ID || again.WatchedOn != "2020-01-02" {
+		t.Errorf("repeated date-only event: %+v, want a duplicate of %d on 2020-01-02", again, first.ID)
+	}
+}
+
 // The table's CHECKs refuse rows that Record would never write.
 func TestSchemaRejectsBadRows(t *testing.T) {
 	e := newEnv(t)
@@ -490,6 +535,17 @@ func TestSchemaRejectsBadRows(t *testing.T) {
 		if _, err := e.d.Write.Exec(insert, args...); err == nil {
 			t.Errorf("%s: insert succeeded", name)
 		}
+	}
+	// watched_on must be a date, and watched_at noon UTC on it.
+	const dated = `INSERT INTO watch_events (user_id, movie_id, watched_at, watched_on, source, created_at)
+		VALUES (?, ?, ?, ?, 'manual', ?)`
+	for _, row := range [][2]string{{"2026-11-03T12:00:00Z", "2026-11-04"}, {"2026-11-03T20:00:00Z", "2026-11-03"}, {"2026-11-03T12:00:00Z", "2026-11-3"}} {
+		if _, err := e.d.Write.Exec(dated, e.user, e.movie, row[0], row[1], ts); err == nil {
+			t.Errorf("watched_at %s, watched_on %s: insert succeeded", row[0], row[1])
+		}
+	}
+	if _, err := e.d.Write.Exec(dated, e.user, e.movie, "2026-11-03T12:00:00Z", "2026-11-03", ts); err != nil {
+		t.Errorf("matching watched_on: %v", err)
 	}
 	if _, err := e.d.Write.Exec(insert, e.user, e.movie, nil, ts, "plex", "x", nil, nil, ts); err != nil {
 		t.Fatalf("first: %v", err)

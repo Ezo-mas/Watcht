@@ -5,20 +5,31 @@
 	import { untrack } from 'svelte';
 	import { getSeason } from '#lib/api/catalog.js';
 	import { ApiError } from '#lib/api/client.js';
-	import type { SeasonDetails, Show } from '#lib/api/types.js';
+	import { markEpisode, markSeason } from '#lib/api/tracking.js';
+	import type { Episode, EpisodeWatched, MarkWhen, SeasonDetails, Show } from '#lib/api/types.js';
 	import Button from '#lib/components/Button.svelte';
 	import EpisodeRow from '#lib/components/EpisodeRow.svelte';
+	import MarkButton from '#lib/components/MarkButton.svelte';
 	import Notice from '#lib/components/Notice.svelte';
-	import { catalogMessages, errorMessage } from '#lib/errors.js';
-	import { formatDay } from '#lib/format.js';
+	import { catalogMessages, errorMessage, trackingMessages } from '#lib/errors.js';
+	import { formatDay, formatWatch } from '#lib/format.js';
 	import { defaultSeason, parseSeasonParam, seasonLabel } from '#lib/media.js';
 	import { poll } from '#lib/poll.js';
+	import { addedMessage, anyAired, seasonProgress } from '#lib/watched.js';
 
 	interface Props {
 		show: Show;
+		/**
+		 * The user's watched episodes, by TMDB episode ID; null while they
+		 * can't be loaded (the rows then have no checks, and there's no
+		 * progress).
+		 */
+		watched: Map<number, EpisodeWatched> | null;
+		/** Reloads `watched` after a mark; throws if that fails. */
+		refreshWatched: () => Promise<void>;
 	}
 
-	let { show }: Props = $props();
+	let { show, watched, refreshWatched }: Props = $props();
 
 	// Regular seasons in order, specials last.
 	const seasons = $derived(
@@ -88,9 +99,62 @@
 		});
 	});
 
-	// Today in UTC, to tell aired episodes from upcoming ones (M4 uses the
-	// user's time zone).
-	const today = new Date().toISOString().slice(0, 10);
+	// To tell aired episodes from upcoming ones, by the server's rule (an air
+	// date counts from noon UTC).
+	const now = new Date();
+
+	const episodes = $derived(view.kind === 'ready' ? (view.details.episodes ?? []) : []);
+	const progress = $derived(watched ? seasonProgress(episodes, watched) : null);
+	const canMarkSeason = $derived(anyAired(episodes, now));
+	// The server refuses a season mark until its episodes are stored.
+	const seasonDisabled = $derived(
+		view.kind === 'pending' || view.kind === 'loading'
+			? "This season's episodes are still being fetched from TMDB."
+			: canMarkSeason
+				? ''
+				: 'Nothing in this season has aired yet.'
+	);
+
+	// Feedback for the season's mark; cleared when the season changes.
+	let seasonNote = $state('');
+	let seasonProblem = $state('');
+	$effect(() => {
+		void number;
+		seasonNote = '';
+		seasonProblem = '';
+	});
+
+	async function markWholeSeason(when: MarkWhen) {
+		if (number === null) return;
+		seasonNote = '';
+		seasonProblem = '';
+		let added: number;
+		try {
+			added = await markSeason(showId, number, when);
+		} catch (e) {
+			seasonProblem = errorMessage(e, trackingMessages);
+			return;
+		}
+		seasonNote = addedMessage(added, canMarkSeason);
+		try {
+			await refreshWatched();
+		} catch {
+			seasonProblem = "The episode list is out of date. Reload the page to see what's watched.";
+		}
+	}
+
+	/** Marks one episode; the row shows the note returned, or the error thrown. */
+	async function markOne(episode: Episode, when: MarkWhen): Promise<string> {
+		const res = await markEpisode(episode.tmdb_id, when);
+		try {
+			await refreshWatched();
+		} catch {
+			return 'Marked, but this list is out of date. Reload the page to see it.';
+		}
+		// A repeat within 3 hours counts as the same watch.
+		if (res.merged_into !== null) return "Already in your history, so it wasn't added again.";
+		return `Added to your history: ${formatWatch(res.watch)}.`;
+	}
 
 	// Up to three placeholder rows while a season loads.
 	const skeletonRows = $derived(
@@ -140,21 +204,55 @@
 		</nav>
 
 		{#if number !== null}
-			<div class="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-				<h3 class="text-base font-semibold text-ink">
-					{listed?.name || seasonLabel(number)}
-				</h3>
-				{#if listed}
-					<p class="flex flex-wrap gap-x-3 text-sm text-muted tabular-nums">
-						<span>{listed.episode_count} {listed.episode_count === 1 ? 'episode' : 'episodes'}</span
-						>
-						{#if listed.air_date}<span>Premiered {formatDay(listed.air_date)}</span>{/if}
-					</p>
+			<div class="mt-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+				<div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+					<h3 class="text-base font-semibold text-ink">
+						{listed?.name || seasonLabel(number)}
+					</h3>
+					{#if listed}
+						<p class="flex flex-wrap gap-x-3 text-sm text-muted tabular-nums">
+							<span
+								>{listed.episode_count} {listed.episode_count === 1 ? 'episode' : 'episodes'}</span
+							>
+							{#if listed.air_date}<span>Premiered {formatDay(listed.air_date)}</span>{/if}
+						</p>
+					{/if}
+				</div>
+				{#if episodes.length > 0 || view.kind === 'pending'}
+					<div class="flex flex-wrap items-start gap-x-4 gap-y-2">
+						{#if progress && progress.total > 0}
+							<p class="flex h-8 items-center gap-2 text-sm text-muted tabular-nums">
+								<span
+									aria-hidden="true"
+									class="block h-1.5 w-16 overflow-hidden rounded-full bg-line"
+								>
+									<span
+										class="block h-full rounded-full bg-watched"
+										style:width="{(progress.watched / progress.total) * 100}%"
+									></span>
+								</span>
+								<span
+									><span class="font-semibold text-ink">{progress.watched}</span> of {progress.total}
+									watched</span
+								>
+							</p>
+						{/if}
+						<MarkButton
+							variant="quiet"
+							label="Mark season watched"
+							menuLabel="Choose when you watched {listed?.name || seasonLabel(number)}"
+							onmark={markWholeSeason}
+							release={{ label: 'Air dates', detail: "Each episode's own", enabled: true }}
+							disabledReason={seasonDisabled}
+						/>
+					</div>
 				{/if}
 			</div>
 			{#if listed?.overview}
 				<p class="mt-1.5 max-w-[72ch] text-sm text-muted">{listed.overview}</p>
 			{/if}
+			<Notice tone="success" message={seasonNote} class="mt-3" />
+			<Notice tone="error" message={seasonProblem} class="mt-3" />
 
 			<div class="mt-2">
 				{#if view.kind === 'loading' || view.kind === 'pending'}
@@ -196,12 +294,17 @@
 							<Button variant="quiet" onclick={() => attempt++}>Try again</Button>
 						{/if}
 					</div>
-				{:else if (view.details.episodes ?? []).length === 0}
+				{:else if episodes.length === 0}
 					<p class="py-3 text-sm text-muted">TMDB lists no episodes for this season yet.</p>
 				{:else}
 					<ul class="divide-y divide-line">
-						{#each view.details.episodes ?? [] as episode (episode.tmdb_id)}
-							<EpisodeRow {episode} {today} />
+						{#each episodes as episode (episode.tmdb_id)}
+							<EpisodeRow
+								{episode}
+								{now}
+								watched={watched?.get(episode.tmdb_id)}
+								onmark={watched ? (when) => markOne(episode, when) : undefined}
+							/>
 						{/each}
 					</ul>
 				{/if}

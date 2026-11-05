@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { changePassword, createToken, listTokens, revokeToken } from './account';
 import { createUser, deleteUser, listUsers, resetPassword } from './users';
 import { getMovie, getSeason, getShow, search } from './catalog';
+import {
+	historyPage,
+	markEpisode,
+	markMovie,
+	markSeason,
+	markShow,
+	movieWatches,
+	removeWatch,
+	showWatched
+} from './tracking';
 
 // Each wrapper must send exactly what the Go handlers expect
 // (internal/httpapi/accounts.go and tokens.go).
@@ -145,5 +155,79 @@ describe('catalog endpoints', () => {
 		const f = recorder(200, season);
 		expect(await getSeason(1399, 0, f)).toEqual(season);
 		expect(sent(f)).toMatchObject({ path: '/api/v1/shows/1399/seasons/0', method: 'GET' });
+	});
+});
+
+describe('tracking endpoints', () => {
+	const result = {
+		watch: { id: 3, watched_at: '2026-11-03T20:00:00Z', watched_on: null, source: 'manual' },
+		merged_into: null
+	};
+
+	it('markMovie sends each kind of time', async () => {
+		const cases = [
+			[{ at: 'now' }, {}],
+			[{ at: 'release' }, { release_date: true }],
+			[
+				{ at: 'time', time: new Date(Date.UTC(2026, 10, 2, 18, 30)) },
+				{ watched_at: '2026-11-02T18:30:00.000Z' }
+			]
+		] as const;
+		for (const [when, body] of cases) {
+			const f = recorder(201, result);
+			expect(await markMovie(603, when, f)).toEqual(result);
+			expect(sent(f)).toEqual({ path: '/api/v1/movies/603/watches', method: 'POST', body });
+		}
+	});
+
+	it('markEpisode uses the TMDB episode ID', async () => {
+		const f = recorder(201, result);
+		await markEpisode(62085, { at: 'release' }, f);
+		expect(sent(f)).toEqual({
+			path: '/api/v1/episodes/62085/watches',
+			method: 'POST',
+			body: { release_date: true }
+		});
+	});
+
+	it('markSeason and markShow unwrap the count', async () => {
+		let f = recorder(200, { added: 7 });
+		expect(await markSeason(1396, 0, { at: 'now' }, f)).toBe(7);
+		expect(sent(f)).toEqual({
+			path: '/api/v1/shows/1396/seasons/0/watches',
+			method: 'POST',
+			body: {}
+		});
+		f = recorder(200, { added: 62 });
+		expect(await markShow(1396, { at: 'now' }, f)).toBe(62);
+		expect(sent(f)).toEqual({ path: '/api/v1/shows/1396/watches', method: 'POST', body: {} });
+	});
+
+	it('removeWatch', async () => {
+		const f = recorder(204);
+		await removeWatch(12, f);
+		expect(sent(f)).toEqual({ path: '/api/v1/watches/12', method: 'DELETE', body: undefined });
+	});
+
+	it('movieWatches and showWatched unwrap the lists', async () => {
+		let f = recorder(200, { watches: [result.watch] });
+		expect(await movieWatches(603, f)).toEqual([result.watch]);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/movies/603/watches', method: 'GET' });
+		const episodes = [
+			{ tmdb_id: 62085, plays: 2, last_watched_at: '2026-11-03T20:00:00Z', last_watched_on: null }
+		];
+		f = recorder(200, { episodes });
+		expect(await showWatched(1396, f)).toEqual(episodes);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/shows/1396/watched', method: 'GET' });
+	});
+
+	it('historyPage passes the cursor and limit only when given', async () => {
+		const page = { entries: [], next_cursor: null };
+		let f = recorder(200, page);
+		expect(await historyPage(undefined, undefined, f)).toEqual(page);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/history', method: 'GET' });
+		f = recorder(200, page);
+		await historyPage('1762200000-12', 20, f);
+		expect(sent(f).path).toBe('/api/v1/history?cursor=1762200000-12&limit=20');
 	});
 });

@@ -144,3 +144,78 @@ export interface SeasonDetails {
 	episodes_pending: boolean;
 	episodes: Episode[] | null;
 }
+
+/** Where a watch came from. Manual marks are the user's own. */
+export type WatchSource = 'manual' | 'jellyfin' | 'plex' | 'trakt_import' | 'letterboxd_import';
+
+/** One watch. Repeats of it merged by the dedupe rule aren't listed. */
+export interface Watch {
+	id: number;
+	/** RFC 3339, UTC. For a watch with only a date, noon UTC on it: use watched_on. */
+	watched_at: string;
+	/**
+	 * YYYY-MM-DD for a watch with a date but no time (a mark at the release or
+	 * air date), shown as that date in every time zone; null otherwise.
+	 */
+	watched_on: string | null;
+	source: WatchSource;
+}
+
+/**
+ * When a mark is recorded: now (the default), a picked time, or the item's
+ * release or air date (stored at noon UTC).
+ */
+export type MarkWhen = { at: 'now' } | { at: 'time'; time: Date } | { at: 'release' };
+
+export interface MarkResult {
+	watch: Watch;
+	/** The watch this mark repeats (within 3 hours), or null for a new watch. */
+	merged_into: number | null;
+}
+
+export interface EpisodeWatched {
+	tmdb_id: number;
+	plays: number;
+	last_watched_at: string;
+	/** As Watch.watched_on, for the latest watch. */
+	last_watched_on: string | null;
+}
+
+export interface HistoryMovie {
+	tmdb_id: number;
+	title: string;
+	poster_path: string;
+	poster_url: string;
+	release_date: string;
+	/** Minutes; 0 when TMDB has none. */
+	runtime: number;
+	/** TMDB's rating, 0 to 10; 0 when it has no votes. */
+	vote_average: number;
+}
+
+export interface HistoryEpisode {
+	tmdb_id: number;
+	season_number: number;
+	episode_number: number;
+	name: string;
+	still_path: string;
+	still_url: string;
+	/** YYYY-MM-DD, or empty when TMDB has none. */
+	air_date: string;
+	/** As for HistoryMovie. */
+	runtime: number;
+	vote_average: number;
+	show: { tmdb_id: number; name: string; poster_path: string; poster_url: string };
+}
+
+/** A watch with what was watched: exactly one of movie and episode is set. */
+export interface HistoryEntry extends Watch {
+	movie: HistoryMovie | null;
+	episode: HistoryEpisode | null;
+}
+
+export interface HistoryPage {
+	entries: HistoryEntry[];
+	/** Pass to historyPage for the next page; null on the last page. */
+	next_cursor: string | null;
+}

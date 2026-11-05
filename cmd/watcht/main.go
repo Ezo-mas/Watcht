@@ -22,6 +22,7 @@ import (
 	"github.com/Ezo-mas/watcht/internal/db"
 	"github.com/Ezo-mas/watcht/internal/httpapi"
 	"github.com/Ezo-mas/watcht/internal/server"
+	"github.com/Ezo-mas/watcht/internal/tracking"
 	"github.com/Ezo-mas/watcht/internal/webui"
 )
 
@@ -110,6 +111,7 @@ func serve(stderr io.Writer) int {
 		WebUI:          webui.Handler(webui.Dist()),
 		Health:         database.Ping,
 		Auth:           authService,
+		Tracking:       tracking.New(database, tracking.Options{}),
 		Catalog:        catalogService,
 		Search:         tmdbClient,
 		BaseOrigin:     cfg.BaseOrigin(),

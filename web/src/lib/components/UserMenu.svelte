@@ -20,7 +20,9 @@
 	let root = $state<HTMLElement>();
 	let trigger = $state<HTMLButtonElement>();
 
+	// History is in the header's nav from sm up, so only phones list it here.
 	const links = $derived([
+		{ href: resolve('/(app)/history'), label: 'History', phoneOnly: true },
 		{ href: resolve('/(app)/settings'), label: 'Settings' },
 		...(user.is_admin ? [{ href: resolve('/(app)/admin/users'), label: 'Users' }] : []),
 		{ href: resolve('/(app)/about'), label: 'About' }
@@ -126,10 +128,10 @@
 		<p class="truncate border-b border-line px-3 pt-1.5 pb-2 text-xs text-muted">
 			Signed in as <span class="font-medium text-ink">{user.username}</span>
 		</p>
-		<!-- History and Watchlist (M4) are listed here on a phone, above the account links. -->
+		<!-- History (and Watchlist, M4) are listed here on a phone, above the account links. -->
 		<ul class="py-1">
 			{#each links as link (link.href)}
-				<li>
+				<li class={[link.phoneOnly && 'sm:hidden']}>
 					<a
 						href={link.href}
 						aria-current={current(link.href)}

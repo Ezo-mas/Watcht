@@ -22,3 +22,18 @@ export function catalogLoadError(e: unknown, notFound: string): never {
 	if (e instanceof ApiError && e.status === 404) error(404, notFound);
 	loadError(e, catalogMessages);
 }
+
+/**
+ * For a part of a page that can fail on its own (the user's watches on a
+ * title page): the value, or null and the message to show in its place,
+ * so the rest of the page still loads.
+ */
+export async function optionalLoad<T>(
+	request: Promise<T>
+): Promise<{ value: T; error: '' } | { value: null; error: string }> {
+	try {
+		return { value: await request, error: '' };
+	} catch (e) {
+		return { value: null, error: errorMessage(e) };
+	}
+}

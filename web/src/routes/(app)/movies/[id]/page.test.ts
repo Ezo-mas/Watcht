@@ -15,12 +15,39 @@ const answer = (status: number, body: unknown) =>
 			headers: { 'Content-Type': 'application/json' }
 		})) as unknown as typeof fetch;
 
+/** Answers each request by its path. */
+const byPath = (bodies: Record<string, unknown>) =>
+	(async (input: RequestInfo | URL) => {
+		const path = String(input);
+		if (!(path in bodies)) return new Response('{}', { status: 500 });
+		return new Response(JSON.stringify(bodies[path]), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}) as unknown as typeof fetch;
+
 const fail = async (p: unknown) => Promise.resolve(p).catch((e: unknown) => e);
 
 describe('movie page load', () => {
-	it('loads the movie by TMDB ID', async () => {
+	it("loads the movie and the user's watches of it by TMDB ID", async () => {
 		const movie = { tmdb_id: 603, title: 'The Matrix' };
-		expect(await load(event('603', answer(200, { movie })))).toEqual({ movie });
+		const watches = [{ id: 7, watched_at: '2026-11-03T18:14:00Z', source: 'manual' }];
+		const fetchFn = byPath({
+			'/api/v1/movies/603': { movie },
+			'/api/v1/movies/603/watches': { watches }
+		});
+		expect(await load(event('603', fetchFn))).toEqual({ movie, watches, watchesError: '' });
+	});
+
+	it("still shows the movie when the user's watches can't be loaded", async () => {
+		const movie = { tmdb_id: 603, title: 'The Matrix' };
+		// byPath answers anything it doesn't know with a 500.
+		const fetchFn = byPath({ '/api/v1/movies/603': { movie } });
+		expect(await load(event('603', fetchFn))).toMatchObject({
+			movie,
+			watches: null,
+			watchesError: expect.any(String)
+		});
 	});
 
 	it('is a 404 for an ID that is not a number, without asking the API', async () => {

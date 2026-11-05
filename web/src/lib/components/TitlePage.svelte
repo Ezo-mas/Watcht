@@ -33,14 +33,23 @@
 		facts: Snippet;
 		/** Everything below: tagline, overview, seasons. */
 		children: Snippet;
+		/**
+		 * The tracking actions: a right-hand column on desktop, a full-width
+		 * row under the facts below that.
+		 */
+		actions?: Snippet;
 	}
 
-	let { title, year, posterUrl, backdropUrl, chips, sections, facts, children }: Props = $props();
+	let { title, year, posterUrl, backdropUrl, chips, sections, facts, children, actions }: Props =
+		$props();
 
 	// The hero and the body share one grid, so the title lines up with the
-	// facts and the poster overlaps the hero in its own column.
-	const grid =
-		'mx-auto grid w-full max-w-7xl grid-cols-[6rem_minmax(0,1fr)] gap-x-4 px-4 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-x-6 sm:px-6 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-x-8';
+	// facts and the poster overlaps the hero in its own column. With
+	// actions, desktop adds a third column for them.
+	const grid = $derived([
+		'mx-auto grid w-full max-w-7xl grid-cols-[6rem_minmax(0,1fr)] gap-x-4 px-4 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:gap-x-6 sm:px-6 lg:gap-x-8',
+		actions ? 'lg:grid-cols-[11rem_minmax(0,1fr)_16rem]' : 'lg:grid-cols-[11rem_minmax(0,1fr)]'
+	]);
 </script>
 
 <article>
@@ -76,9 +85,9 @@
 			></div>
 		{/if}
 		<div
-			class={[grid, backdropUrl ? 'pt-28 sm:pt-44 lg:pt-56' : 'pt-14 sm:pt-20 lg:pt-24', 'pb-4']}
+			class={[...grid, backdropUrl ? 'pt-28 sm:pt-44 lg:pt-56' : 'pt-14 sm:pt-20 lg:pt-24', 'pb-4']}
 		>
-			<div class="col-start-2 min-w-0">
+			<div class={['col-start-2 min-w-0', actions && 'lg:col-end-4']}>
 				<h1
 					class="text-2xl leading-tight font-bold tracking-tight text-balance [text-shadow:0_1px_12px_rgb(0_0_0/0.5)] sm:text-3xl lg:text-4xl"
 				>
@@ -102,9 +111,17 @@
 		</div>
 	</header>
 
-	<div class={[grid, 'pb-12']}>
+	<!--
+		With actions, a third, flexible row takes up the action column's (or
+		poster's) extra height on desktop, so the overview doesn't move down
+		when the column grows.
+	-->
+	<div class={[...grid, actions && 'lg:grid-rows-[auto_auto_1fr]', 'pb-12']}>
 		<aside
-			class="relative z-10 col-start-1 row-start-1 -mt-16 self-start sm:-mt-24 lg:sticky lg:top-16 lg:row-span-2 lg:-mt-36"
+			class={[
+				actions ? 'lg:row-span-3' : 'lg:row-span-2',
+				'relative z-10 col-start-1 row-start-1 -mt-16 self-start sm:-mt-24 lg:sticky lg:top-16 lg:-mt-36'
+			]}
 		>
 			<Artwork
 				src={posterUrl}
@@ -136,6 +153,14 @@
 		<div id="overview" class="col-start-2 row-start-1 min-w-0 pt-3 sm:pt-4">
 			{@render facts()}
 		</div>
+
+		{#if actions}
+			<div
+				class="col-span-2 mt-5 min-w-0 lg:sticky lg:top-16 lg:col-span-1 lg:col-start-3 lg:row-span-3 lg:row-start-1 lg:mt-0 lg:self-start lg:pt-4"
+			>
+				{@render actions()}
+			</div>
+		{/if}
 
 		<div class="col-span-2 min-w-0 lg:col-span-1 lg:col-start-2">
 			{@render children()}

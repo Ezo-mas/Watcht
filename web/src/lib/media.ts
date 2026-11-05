@@ -17,15 +17,24 @@ export function formatRuntime(minutes: number): string {
 	return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-/** The classic "1x01" episode code. */
+/** The "S01E02" episode code (maintainer decision, 2026-11-03). */
 export function episodeCode(season: number, episode: number): string {
-	return `${season}x${String(episode).padStart(2, '0')}`;
+	return `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
 }
 
 /** A TMDB vote average (0–10) to one decimal, or "" when there are no votes. */
 export function formatScore(average: number, count: number): string {
 	if (!(count > 0) || !(average > 0)) return '';
 	return average.toFixed(1);
+}
+
+/**
+ * A TMDB vote average (0–10) as a percentage ("67%"), as the poster cards'
+ * heart shows it; "" when there are no votes (0).
+ */
+export function tmdbPercent(average: number): string {
+	if (!Number.isFinite(average) || average <= 0) return '';
+	return `${Math.round(average * 10)}%`;
 }
 
 /**

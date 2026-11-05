@@ -40,6 +40,8 @@
 	--color-ok: #3d6b2c;
 	/* Tracking states (M4): watched (sage) and on the watchlist (3:1 on surface). */
 	--color-watched: #4f7a3c;
+	/* A hovered or focused watched check: a darker sage. */
+	--color-watched-hover: #3f6531;
 	--color-listed: #2b6f86;
 	/* TMDB's logo: their rules allow pure black or white (or brand colours). */
 	--color-tmdb-logo: #000000;
@@ -51,6 +53,11 @@
 	--color-on-screen: #f1f5f1;
 	--color-on-screen-muted: #c3d0c5;
 	--color-on-screen-accent: #eb8f55;
+	/*
+	 * The poster card's action bar: dark in both themes, with the screen's
+	 * text colours on it; lifted off the canvas in dark.
+	 */
+	--color-strip: #14201a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -72,8 +79,10 @@
 		--color-on-danger: #2a0d09;
 		--color-ok: #8fb07c;
 		--color-watched: #8fb07c;
+		--color-watched-hover: #76985f;
 		--color-listed: #8cc7d9;
 		--color-tmdb-logo: #ffffff;
+		--color-strip: #223428;
 	}
 }
 
