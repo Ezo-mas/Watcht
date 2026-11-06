@@ -5,6 +5,8 @@
 	import WhenMenu from './WhenMenu.svelte';
 
 	interface Props {
+		/** An id for the main part, so the page can move focus to it. */
+		id?: string;
 		/** The one-click action, which marks it just now ("Mark as watched"). */
 		label: string;
 		/** The menu button's accessible name ("Choose when you watched The Matrix"). */
@@ -16,21 +18,28 @@
 		variant?: 'primary' | 'quiet';
 		/** Turns the whole control off; the reason is shown under it. */
 		disabledReason?: string;
+		/** The when-menu's icon: a chevron, or a + that turns into an × (WhenMenu). */
+		menuIcon?: 'chevron' | 'plus';
 		class?: ClassValue;
 	}
 
 	let {
+		id: buttonId,
 		label,
 		menuLabel,
 		onmark,
 		release,
 		variant = 'primary',
 		disabledReason = '',
+		menuIcon = 'chevron',
 		class: className
 	}: Props = $props();
 
 	let busy = $state(false);
 
+	// While a mark runs, both parts stay enabled (a disabled button would
+	// drop keyboard focus to the page) and a second mark is ignored; the
+	// spinner and aria-busy say it's working. Only a reason disables them.
 	async function run(when: MarkWhen) {
 		if (busy) return;
 		busy = true;
@@ -48,14 +57,16 @@
 
 <!--
 	A split button: the main part marks it watched just now in one click;
-	the chevron opens the when-choice (just now, release date, other date).
+	the chevron (or +) opens the when-choice (just now, release date, other
+	date).
 -->
 <div class={['flex flex-col', !primary && 'items-start', className]}>
 	<div class="flex">
 		<button
+			id={buttonId}
 			type="button"
 			aria-describedby={reasonId}
-			disabled={busy || !!disabledReason}
+			disabled={!!disabledReason}
 			aria-busy={busy || undefined}
 			onclick={() => run({ at: 'now' })}
 			class={[
@@ -88,7 +99,8 @@
 			label={menuLabel}
 			onmark={run}
 			{release}
-			busy={busy || !!disabledReason}
+			icon={menuIcon}
+			busy={!!disabledReason}
 			describedby={reasonId}
 			class={[
 				'rounded-r-md',

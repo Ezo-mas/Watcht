@@ -12,12 +12,22 @@
 		onmark: (when: MarkWhen) => unknown;
 		/** The release-date option: the date, or why it can't be picked. */
 		release: ReleaseOption;
-		/** While a mark runs, the trigger is disabled. */
+		/**
+		 * Disables the trigger (the mark can't be used now). Not for a mark
+		 * that's running: focus returns to the trigger after a choice.
+		 */
 		busy?: boolean;
+		/** A mark started from here is running: aria-busy, the trigger stays usable. */
+		working?: boolean;
 		/** The ID of text that describes the trigger (why it's disabled). */
 		describedby?: string;
 		/** Which edge of the trigger the menu lines up with. */
 		align?: 'start' | 'end';
+		/**
+		 * chevron: flips while open; plus ("add a play", the movie's action
+		 * column): turns 45° into an × while open.
+		 */
+		icon?: 'chevron' | 'plus';
 		/** The trigger's look; the caller joins it to its own button. */
 		class?: ClassValue;
 	}
@@ -27,8 +37,10 @@
 		onmark,
 		release,
 		busy = false,
+		working = false,
 		describedby,
 		align = 'end',
+		icon = 'chevron',
 		class: className
 	}: Props = $props();
 
@@ -88,20 +100,34 @@
 		aria-describedby={describedby}
 		aria-expanded={open}
 		aria-controls="{id}-when"
+		aria-busy={working || undefined}
 		disabled={busy}
 		onclick={toggle}
 		class={['grid place-items-center transition-colors disabled:cursor-not-allowed', className]}
 	>
-		<svg
-			aria-hidden="true"
-			viewBox="0 0 16 16"
-			class={['size-3.5 transition-transform', open && 'rotate-180']}
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"><path d="m4 6 4 4 4-4" /></svg
-		>
+		{#if icon === 'plus'}
+			<!-- Turns into an × while open (instantly with reduced motion: layout.css). -->
+			<svg
+				aria-hidden="true"
+				viewBox="0 0 16 16"
+				class={['size-4 transition-transform duration-200', open && 'rotate-45']}
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"><path d="M8 2.75v10.5M2.75 8h10.5" /></svg
+			>
+		{:else}
+			<svg
+				aria-hidden="true"
+				viewBox="0 0 16 16"
+				class={['size-3.5 transition-transform', open && 'rotate-180']}
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"><path d="m4 6 4 4 4-4" /></svg
+			>
+		{/if}
 	</button>
 
 	<div

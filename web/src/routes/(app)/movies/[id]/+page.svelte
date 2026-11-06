@@ -1,8 +1,12 @@
 <script lang="ts">
 	import Facts from '#lib/components/Facts.svelte';
-	import TitlePage, { type HeroChip } from '#lib/components/TitlePage.svelte';
+	import PeopleSection from '#lib/components/PeopleSection.svelte';
+	import RecommendationsSection from '#lib/components/RecommendationsSection.svelte';
+	import StatsSection from '#lib/components/StatsSection.svelte';
+	import TitlePage from '#lib/components/TitlePage.svelte';
+	import VideosSection from '#lib/components/VideosSection.svelte';
 	import { formatDay } from '#lib/format.js';
-	import { formatRuntime, formatScore, languageName, yearOf } from '#lib/media.js';
+	import { formatRuntime, formatScore, languageName, titleLinks, yearOf } from '#lib/media.js';
 	import MovieActions from './MovieActions.svelte';
 	import type { PageProps } from './$types';
 
@@ -12,21 +16,12 @@
 	const score = $derived(formatScore(movie.vote_average, movie.vote_count));
 	const runtime = $derived(formatRuntime(movie.runtime));
 
-	const chips = $derived<HeroChip[]>([
-		...(score
-			? [
-					{
-						label: 'TMDB',
-						text: score,
-						strong: true,
-						title: `${movie.vote_count.toLocaleString()} votes on TMDB`
-					}
-				]
-			: []),
-		...(runtime ? [{ text: runtime }] : []),
-		// "Released" is the usual case; anything else (Planned, In Production) is worth a chip.
-		...(movie.status && movie.status !== 'Released' ? [{ text: movie.status }] : [])
-	]);
+	// TMDB's score only until M8 adds MDBList's sources (maintainer decision).
+	const ratings = $derived(
+		score
+			? [{ site: 'tmdb' as const, label: 'TMDB', score, outOf: '10', votes: movie.vote_count }]
+			: []
+	);
 
 	const factsList = $derived([
 		{ label: 'Released', value: formatDay(movie.release_date) },
@@ -37,20 +32,16 @@
 			label: 'Original title',
 			value: movie.original_title !== movie.title ? movie.original_title : ''
 		},
-		{ label: 'Language', value: languageName(movie.original_language) },
-		{
-			label: 'IMDb',
-			value: movie.imdb_id,
-			href: movie.imdb_id
-				? `https://www.imdb.com/title/${encodeURIComponent(movie.imdb_id)}/`
-				: undefined
-		},
-		{
-			label: 'TMDB',
-			value: String(movie.tmdb_id),
-			href: `https://www.themoviedb.org/movie/${movie.tmdb_id}`
-		}
+		{ label: 'Language', value: languageName(movie.original_language) }
 	]);
+
+	const sections = [
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'stats', label: 'Stats' },
+		{ id: 'people', label: 'People' },
+		{ id: 'videos', label: 'Videos' },
+		{ id: 'recommendations', label: 'Recommendations' }
+	];
 </script>
 
 <svelte:head>
@@ -62,18 +53,32 @@
 	year={yearOf(movie.release_date)}
 	posterUrl={movie.poster_url}
 	backdropUrl={movie.backdrop_url}
-	{chips}
-	sections={[{ id: 'overview', label: 'Overview' }]}
+	{ratings}
+	links={titleLinks('movie', movie.tmdb_id, movie.imdb_id)}
+	{sections}
 >
 	{#snippet facts()}
 		<Facts facts={factsList} />
 	{/snippet}
 
 	{#snippet actions()}
-		<MovieActions {movie} watches={data.watches} watchesError={data.watchesError} />
+		<!--
+			A fresh instance per movie: its reload guard and state belong to
+			one movie, so a slow reload for the last one can't land here.
+		-->
+		{#key movie.tmdb_id}
+			<MovieActions {movie} watches={data.watches} watchesError={data.watchesError} />
+		{/key}
 	{/snippet}
 
-	<div class="mt-5 max-w-[72ch]">
+	{#snippet below()}
+		<StatsSection tmdb={{ average: movie.vote_average, votes: movie.vote_count }} />
+		<PeopleSection />
+		<VideosSection />
+		<RecommendationsSection title={movie.title} />
+	{/snippet}
+
+	<div class="mt-6 max-w-[72ch]">
 		{#if movie.tagline}
 			<p class="text-[0.9375rem] text-muted italic">{movie.tagline}</p>
 		{/if}
