@@ -5,11 +5,12 @@
 	import Facts from '#lib/components/Facts.svelte';
 	import MarkButton from '#lib/components/MarkButton.svelte';
 	import Notice from '#lib/components/Notice.svelte';
-	import TitlePage, { type HeroChip } from '#lib/components/TitlePage.svelte';
+	import TitlePage from '#lib/components/TitlePage.svelte';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
 	import { formatDay } from '#lib/format.js';
 	import { latestOnly } from '#lib/latest.js';
-	import { formatScore, languageName, yearOf } from '#lib/media.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { formatScore, languageName, titleLinks, yearOf } from '#lib/media.js';
 	import { addedMessage, hasAired, watchedById } from '#lib/watched.js';
 	import Seasons from './Seasons.svelte';
 	import type { PageProps } from './$types';
@@ -61,24 +62,21 @@
 			show.seasons.some((s) => s.season_number > 0 && hasAired(s.air_date, now))
 	);
 
-	let showNote = $state('');
-	let showProblem = $state('');
-
+	// Results are toasts (DESIGN.md, Toasts): nothing added is info, not
+	// an error.
 	async function markWholeShow(when: MarkWhen) {
-		showNote = '';
-		showProblem = '';
 		let added: number;
 		try {
 			added = await markShow(show.tmdb_id, when);
 		} catch (e) {
-			showProblem = errorMessage(e, trackingMessages);
+			toast.error(errorMessage(e, trackingMessages));
 			return;
 		}
-		showNote = addedMessage(added, anyAired);
+		toast.show(added > 0 ? 'success' : 'info', addedMessage(added, anyAired));
 		try {
 			await refreshWatched();
 		} catch {
-			showProblem = "The episode list is out of date. Reload the page to see what's watched.";
+			toast.error("The episode list is out of date. Reload the page to see what's watched.");
 		}
 	}
 
@@ -86,22 +84,12 @@
 	const episodes = $derived(regular.reduce((n, s) => n + s.episode_count, 0));
 	const score = $derived(formatScore(show.vote_average, show.vote_count));
 
-	const chips = $derived<HeroChip[]>([
-		...(score
-			? [
-					{
-						label: 'TMDB',
-						text: score,
-						strong: true,
-						title: `${show.vote_count.toLocaleString()} votes on TMDB`
-					}
-				]
-			: []),
-		...(show.status ? [{ text: show.status }] : []),
-		...(regular.length
-			? [{ text: `${regular.length} ${regular.length === 1 ? 'season' : 'seasons'}` }]
-			: [])
-	]);
+	// TMDB's score only until M8 adds MDBList's sources (maintainer decision).
+	const ratings = $derived(
+		score
+			? [{ site: 'tmdb' as const, label: 'TMDB', score, outOf: '10', votes: show.vote_count }]
+			: []
+	);
 
 	const aired = $derived.by(() => {
 		const first = formatDay(show.first_air_date);
@@ -120,19 +108,7 @@
 			label: 'Original title',
 			value: show.original_name !== show.name ? show.original_name : ''
 		},
-		{ label: 'Language', value: languageName(show.original_language) },
-		{
-			label: 'IMDb',
-			value: show.imdb_id,
-			href: show.imdb_id
-				? `https://www.imdb.com/title/${encodeURIComponent(show.imdb_id)}/`
-				: undefined
-		},
-		{
-			label: 'TMDB',
-			value: String(show.tmdb_id),
-			href: `https://www.themoviedb.org/tv/${show.tmdb_id}`
-		}
+		{ label: 'Language', value: languageName(show.original_language) }
 	]);
 </script>
 
@@ -145,7 +121,8 @@
 	year={yearOf(show.first_air_date)}
 	posterUrl={show.poster_url}
 	backdropUrl={show.backdrop_url}
-	{chips}
+	{ratings}
+	links={titleLinks('tv', show.tmdb_id, show.imdb_id)}
 	sections={[
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'seasons', label: 'Seasons', count: show.seasons.length }
@@ -169,8 +146,6 @@
 			<p class="mt-2 text-xs text-muted">
 				Adds every aired episode you haven't watched yet, except specials.
 			</p>
-			<Notice tone="success" message={showNote} class="mt-3" />
-			<Notice tone="error" message={showProblem} class="mt-3" />
 			{#if watched === null}
 				<div class="mt-3 flex flex-col items-start gap-2">
 					<Notice
@@ -183,7 +158,7 @@
 		</div>
 	{/snippet}
 
-	<div class="mt-5 max-w-[72ch]">
+	<div class="mt-6 max-w-[72ch]">
 		{#if show.tagline}
 			<p class="text-[0.9375rem] text-muted italic">{show.tagline}</p>
 		{/if}

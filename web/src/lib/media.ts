@@ -85,3 +85,28 @@ export function parseId(value: string): number | null {
 	const n = Number(value);
 	return n <= 2147483647 ? n : null;
 }
+
+/** A page about a title on another site, shown as an icon link (ExternalLinks). */
+export interface TitleLink {
+	site: 'imdb' | 'tmdb';
+	/** The site's name, for the link's accessible name and tooltip. */
+	label: string;
+	href: string;
+}
+
+/**
+ * The title's pages on IMDb (when TMDB knows its IMDb ID) and TMDB, in
+ * that order.
+ */
+export function titleLinks(kind: 'movie' | 'tv', tmdbId: number, imdbId: string): TitleLink[] {
+	const links: TitleLink[] = [];
+	if (imdbId) {
+		links.push({
+			site: 'imdb',
+			label: 'IMDb',
+			href: `https://www.imdb.com/title/${encodeURIComponent(imdbId)}/`
+		});
+	}
+	links.push({ site: 'tmdb', label: 'TMDB', href: `https://www.themoviedb.org/${kind}/${tmdbId}` });
+	return links;
+}
