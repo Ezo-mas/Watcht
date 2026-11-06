@@ -4,6 +4,7 @@
 	import AppFooter from '#lib/components/AppFooter.svelte';
 	import Kbd from '#lib/components/Kbd.svelte';
 	import SearchOverlay from '#lib/components/SearchOverlay.svelte';
+	import Toaster from '#lib/components/Toaster.svelte';
 	import UserMenu from '#lib/components/UserMenu.svelte';
 	import Wordmark from '#lib/components/Wordmark.svelte';
 	import { searchOverlay } from '#lib/search-overlay.svelte.js';
@@ -110,3 +111,5 @@
 </div>
 
 <SearchOverlay />
+<!-- Action results, floating under the header (DESIGN.md, Toasts). -->
+<Toaster />
