@@ -13,8 +13,9 @@
 	import Notice from '#lib/components/Notice.svelte';
 	import { catalogMessages, errorMessage, trackingMessages } from '#lib/errors.js';
 	import { formatDay, formatWatch } from '#lib/format.js';
-	import { defaultSeason, parseSeasonParam, seasonLabel } from '#lib/media.js';
+	import { defaultSeason, episodeCode, parseSeasonParam, seasonLabel } from '#lib/media.js';
 	import { poll } from '#lib/poll.js';
+	import { toast } from '#lib/toast.svelte.js';
 	import { addedMessage, anyAired, seasonProgress } from '#lib/watched.js';
 
 	interface Props {
@@ -115,45 +116,40 @@
 				: 'Nothing in this season has aired yet.'
 	);
 
-	// Feedback for the season's mark; cleared when the season changes.
-	let seasonNote = $state('');
-	let seasonProblem = $state('');
-	$effect(() => {
-		void number;
-		seasonNote = '';
-		seasonProblem = '';
-	});
-
+	// Results of the season's and the episodes' marks are toasts (DESIGN.md,
+	// Toasts), named, since they float away from the row they came from.
 	async function markWholeSeason(when: MarkWhen) {
 		if (number === null) return;
-		seasonNote = '';
-		seasonProblem = '';
+		const name = listed?.name || seasonLabel(number);
 		let added: number;
 		try {
 			added = await markSeason(showId, number, when);
 		} catch (e) {
-			seasonProblem = errorMessage(e, trackingMessages);
+			toast.error(`${name}: ${errorMessage(e, trackingMessages)}`);
 			return;
 		}
-		seasonNote = addedMessage(added, canMarkSeason);
+		toast.show(added > 0 ? 'success' : 'info', `${name}: ${addedMessage(added, canMarkSeason)}`);
 		try {
 			await refreshWatched();
 		} catch {
-			seasonProblem = "The episode list is out of date. Reload the page to see what's watched.";
+			toast.error("The episode list is out of date. Reload the page to see what's watched.");
 		}
 	}
 
-	/** Marks one episode; the row shows the note returned, or the error thrown. */
-	async function markOne(episode: Episode, when: MarkWhen): Promise<string> {
+	/** Marks one episode, with a toast for the result; throws an ApiError if it fails. */
+	async function markOne(episode: Episode, when: MarkWhen): Promise<void> {
+		const code = episodeCode(episode.season_number, episode.episode_number);
 		const res = await markEpisode(episode.tmdb_id, when);
 		try {
 			await refreshWatched();
 		} catch {
-			return 'Marked, but this list is out of date. Reload the page to see it.';
+			toast.error(`${code} marked, but this list is out of date. Reload the page to see it.`);
+			return;
 		}
-		// A repeat within 3 hours counts as the same watch.
-		if (res.merged_into !== null) return "Already in your history, so it wasn't added again.";
-		return `Added to your history: ${formatWatch(res.watch)}.`;
+		// A repeat within 3 hours counts as the same watch: not an error.
+		if (res.merged_into !== null)
+			toast.info(`${code} is already in your history, so it wasn't added again.`);
+		else toast.success(`Added ${code} to your history: ${formatWatch(res.watch)}.`);
 	}
 
 	// Up to three placeholder rows while a season loads.
@@ -251,8 +247,6 @@
 			{#if listed?.overview}
 				<p class="mt-1.5 max-w-[72ch] text-sm text-muted">{listed.overview}</p>
 			{/if}
-			<Notice tone="success" message={seasonNote} class="mt-3" />
-			<Notice tone="error" message={seasonProblem} class="mt-3" />
 
 			<div class="mt-2">
 				{#if view.kind === 'loading' || view.kind === 'pending'}

@@ -5,6 +5,7 @@
 	import { formatDay, formatWatch } from '#lib/format.js';
 	import { episodeCode, formatRuntime } from '#lib/media.js';
 	import { hasAired, playsLabel } from '#lib/watched.js';
+	import { toast } from '#lib/toast.svelte.js';
 	import { releaseOption } from '#lib/when.js';
 	import Artwork from './Artwork.svelte';
 	import Badge from './Badge.svelte';
@@ -17,11 +18,11 @@
 		/** How often the user watched it; undefined when they haven't. */
 		watched?: EpisodeWatched;
 		/**
-		 * Marks the episode watched. Resolves with a note to show on the row
-		 * (or nothing); throws an ApiError on failure. Without it the row has
-		 * no watched check.
+		 * Marks the episode watched, showing its own result toast; throws an
+		 * ApiError on failure (the row shows that as an error toast). Without
+		 * it the row has no watched check.
 		 */
-		onmark?: (when: MarkWhen) => Promise<string | void>;
+		onmark?: (when: MarkWhen) => Promise<void>;
 	}
 
 	let { episode, now, watched, onmark }: Props = $props();
@@ -33,8 +34,6 @@
 	const release = $derived(releaseOption('Air date', episode.air_date, now));
 
 	let busy = $state(false);
-	let note = $state('');
-	let error = $state('');
 	let actions = $state<HTMLElement>();
 
 	async function mark(when: MarkWhen) {
@@ -43,12 +42,11 @@
 		// focus moves on to the row's when-choice instead of getting lost.
 		const fromCheck = document.activeElement?.hasAttribute('data-check') ?? false;
 		busy = true;
-		note = '';
-		error = '';
 		try {
-			note = (await onmark(when)) ?? '';
+			await onmark(when);
 		} catch (e) {
-			error = errorMessage(e, trackingMessages);
+			// No menu is open by now, so the failure is a toast, named.
+			toast.error(`${code}: ${errorMessage(e, trackingMessages)}`);
 		} finally {
 			busy = false;
 		}
@@ -106,12 +104,6 @@
 			<p class="mt-1.5 line-clamp-3 max-w-[72ch] text-sm text-muted sm:line-clamp-none">
 				{episode.overview}
 			</p>
-		{/if}
-		{#if onmark}
-			{#if error}
-				<p role="alert" class="mt-1.5 text-xs text-danger">{error}</p>
-			{/if}
-			<p role="status" class={['text-xs text-muted', note && 'mt-1.5']}>{note}</p>
 		{/if}
 	</div>
 
@@ -184,7 +176,6 @@
 					: `Choose when you watched ${code}`}
 				onmark={mark}
 				{release}
-				{busy}
 				class="h-10 w-10 rounded-md border border-line text-muted hover:border-line-strong hover:text-ink disabled:opacity-60 sm:h-8 sm:w-6 sm:rounded-l-none sm:border-l-0"
 			/>
 		</div>
