@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isHttpError } from '@sveltejs/kit';
 import { render } from 'svelte/server';
 import type { Movie, Watch } from '#lib/api/types.js';
-import { formatWatch } from '#lib/format.js';
+import { formatDay, formatWatch } from '#lib/format.js';
 import { load } from './+page';
 import Page from './+page.svelte';
 
@@ -136,7 +136,7 @@ describe('movie page', () => {
 		for (const label of ['Released', 'Runtime', 'Status', 'Genres', 'Language']) {
 			expect(body).toMatch(new RegExp(`<dt[^>]*>\\s*${label}\\s*</dt>`));
 		}
-		expect(body).toContain('30 Mar 1999');
+		expect(body).toContain(formatDay(matrix.release_date));
 		expect(body).toContain('Action, Science Fiction');
 		expect(body).toContain('Believe the unbelievable.');
 		expect(body).toContain('Set in the 22nd century');
