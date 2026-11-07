@@ -15,6 +15,11 @@ repeats the colours it uses. Shared components are in
   and later the watchlist and dashboard), use poster cards in a grid.
 - **One bold element per page.** On a title page it's the backdrop hero
   with the overlapping poster. Everything around it stays quiet.
+- **Trakt's structure, watcht's spacing.** Title pages follow classic
+  Trakt's layout (poster column, ratings band, facts, action column,
+  sections), but not its density: keep watcht's gaps, padding, line
+  heights, and section spacing, or roomier ones. Never tighten spacing to
+  match a reference (maintainer decision, 2026-11-06).
 - **The accent means "look here".** Burnt orange marks the current thing
   (selected season, active filter, the primary button), episode codes,
   external links, and a result's type. Don't use it for decoration.
@@ -45,7 +50,7 @@ Pine and sage neutrals with a burnt orange accent. Both themes follow
 | `accent-text` | `#9c4313` | `#eb8f55` | Accent as text: links, episode codes |
 | `focus` | `#9c4313` | `#eb8f55` | Focus ring |
 | `danger` / `on-danger` | `#b42318` / `#ffffff` | `#ff8f80` / `#2a0d09` | Errors, destructive actions |
-| `ok` | `#3d6b2c` | `#8fb07c` | Success notes |
+| `ok` | `#3d6b2c` | `#8fb07c` | Inline success notes (forms) |
 | `watched` | `#4f7a3c` | `#8fb07c` | Watched state: episode checks, the "Watched N times" mark, season progress bars |
 | `watched-hover` | `#3f6531` | `#76985f` | A hovered, focused, or open watched check on a poster card (a darker sage) |
 | `listed` | `#2b6f86` | `#8cc7d9` | On the watchlist (M4 token: defined, not used yet) |
@@ -86,7 +91,10 @@ the strip, but the check icon on it stays at 6.6 and keyboard focus adds
 the `on-screen-accent` ring, so the state never depends on the fill.
 
 Translucent surfaces (the search overlay) were measured in the browser
-over the darkest content (the hero): muted text stays above 4.5.
+over the darkest content (the hero): muted text stays above 4.5. The
+header is `surface` at 85%: computed over pure black (light theme) and
+pure white (dark theme) underneath, its `muted` links stay at 4.6 / 4.5,
+so don't lower that opacity.
 
 ## Type
 
@@ -98,7 +106,7 @@ and weight. Numbers that line up (codes, dates, runtimes, counts) use
 | --- | --- | --- |
 | Title hero | 24 / 30 / 36 px, 700; year 400 in `on-screen-muted` | `text-2xl sm:text-3xl lg:text-4xl font-bold` |
 | Page heading | 20 px, 600 | `text-xl font-semibold tracking-tight` |
-| Section heading | 18 px, 600, hairline under it | `text-lg font-semibold` |
+| Section heading | 18 px, 600, hairline under it (Seasons; not the title page's placeholder sections) | `text-lg font-semibold` |
 | History day heading | 20 px (18 on phones): weekday 700, date 400; the day's total 15 px (14) `muted` | `text-lg sm:text-xl` |
 | Sub-heading (season, panel) | 16 px, 600 | `text-base font-semibold` |
 | Episode title | 15 px, 600; code (`S01E02`) 700 in `accent-text` | `text-[0.9375rem]` |
@@ -115,7 +123,9 @@ running text under ~75 characters a line (`max-w-[72ch]`).
 ## Spacing and layout
 
 - 4 px grid (Tailwind's scale). Dense by default: rows `py-1.5`–`py-3`,
-  gaps `gap-1`–`gap-4`; sections `mt-8`.
+  gaps `gap-1`–`gap-4`; sections `mt-8`, a title page's sections under
+  the overview `mt-14`. Density comes from showing more, not from
+  squeezing it: these are minimums.
 - **Column:** `max-w-7xl` (1280 px) centred, `px-4` / `sm:px-6`. The
   header, footer, and title pages share it, so their left edges line up.
 - Ordinary pages render inside the layout's padded column. Title pages
@@ -126,48 +136,178 @@ running text under ~75 characters a line (`max-w-[72ch]`).
 
 ## Title page anatomy (`TitlePage`)
 
+After classic Trakt's movie page (structure only; see Principles).
+
 ```
-┌──────────────────────── backdrop (screen) ────────────────────────┐
-│                                                                   │
-│              Title 1999                                           │
-│ ┌──────┐     [TMDB 8.3] [2h 16m] [Ended]                          │
+┌──────────── header (glass; the hero shows through it) ─────────────┐
+├──────────────────────── backdrop (screen) ─────────────────────────┤
+│ ┌──────┐                                                           │
+│ │      │   Title 1999                                              │
 ├─│poster│───────────────────────────────────────────────────────────┤
-│ │ 2:3  │     LABEL value   LABEL value   LABEL link …   (Facts)    │
-│ └──────┘     Tagline, italic, muted                               │
-│ OVERVIEW     Overview, max 72ch                                   │
-│ SEASONS  6   Seasons: picker, season heading, episode rows        │
+│ │ 2:3  │   [TMDB] 8.3                                              │ ratings band
+├─│      │───────────────────────────────────────────────────────────┤
+│ │      │   LABEL value  LABEL value …   (Facts)  │[✓ 2 plays    | + ]│
+│ └──────┘   Tagline, italic, muted               │[  6 Nov, 22:31|  ]│
+│ OVERVIEW →  Overview, max 72ch                  │[Add to watchlist ]│
+│ STATS    →                                      │[Rate it          ]│
+│ PEOPLE   →                                      │[Where to watch   ]│
+│ …           Stats / People / Videos / Recommendations (movie)       │
+│             as wide as the overview and actions together            │
+│ [IMDb][TMDB]                                                        │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-- One grid for hero and body: `[poster column | main]`, poster column
-  6 rem (phone), 8.5 rem (`sm`), 11 rem (`lg`). The title sits in the
-  main column, so it lines up with the facts, and the poster overlaps the
-  hero by 4 / 6 / 9 rem without touching the title.
-- Hero: backdrop `object-cover` at 50% 25%, a bottom-to-top scrim to
-  `screen` plus a left scrim, title and chips at the bottom. Without a
-  backdrop: shorter, a faint ember glow on `screen`.
-- Chips on the hero: TMDB score (label + bold accent number, vote count
-  in the tooltip), then key facts (runtime or status and season count).
-  Genres go in the facts, not the chips.
-- Section list under the poster (`sm` up), only with two or more
-  sections; in-page anchors, `scroll-padding-top` clears the header. On
-  `lg` the poster column is sticky.
-- Facts (`Facts`): label/value pairs that wrap across the column. Empty
-  values are dropped. IMDb and TMDB IDs link out (new tab, `accent-text`).
-- **Action column** (`actions` snippet): the classic right-hand column,
-  16 rem on `lg` (sticky, like the poster), a full-width row under the
-  facts below `lg`. A flexible third grid row takes its extra height, so
-  the overview never moves when it grows. If the user's watches fail to
-  load, the page still shows; the column has the error and "Try again". Today: the mark split button,
-  feedback notes, and (movies) the user's watches; watchlist and rating
-  join it in slice 3. Never add buttons that do nothing.
-- **Movie watches:** under the mark button, a heading that states the
-  state ("Not watched yet", "Watched once", "Watched 3 times", with a
-  sage check), then the newest 5 watches (date and time, a source badge
-  when not manual, × to remove via `InlineConfirm`) and "Show all N
-  watches".
+- **One grid** for hero and body: `[poster column | main | actions]`.
+  Poster column 7 rem (phone), 10 rem (`sm`), 12 rem (`lg`), 14 rem
+  (`xl`); action column 16 rem (`lg`), 18 rem (`xl`); gaps 16 / 24 / 32 /
+  40 px. The title and band sit in the main column (and over the actions
+  on `lg`), so they line up with the facts, and the poster overlaps the
+  hero by 5 / 7 / 10 / 11 rem without touching the title.
+- **Hero:** starts under the translucent header (the layout pulls title
+  pages up by the header's height; the hero's top padding clears it).
+  Backdrop `object-cover` at 50% 25%, a bottom-to-top scrim to `screen`
+  plus a left scrim, the title at the bottom. Without a backdrop: shorter,
+  a faint ember glow on `screen`.
+- **Ratings band** (`RatingsBand`): a full-width strip along the bottom
+  of the hero (`screen` at 55%, a light blur, no hairline), 56 px (64
+  from `sm`). One entry per source, and only its mark (`SourceMark`,
+  screen tone) and score (20 px bold `on-screen-accent`): no "/ 10" and
+  no visible vote count. The votes are in the entry's tooltip ("29,114
+  votes on TMDB"), and screen readers hear "TMDB rating 8.3 out of 10,
+  from 29,114 votes" (maintainer decision, 2026-11-06). TMDB only until
+  M8 adds MDBList's sources, which join as more entries; no greyed-out or
+  empty slots. No band without votes. Nothing on it is focusable (no
+  "All stats" link; the section list goes there). Runtime, status, and
+  season count are facts, not hero chips.
+- **Poster column** (`aside`): the poster (`rounded-md`, a soft shadow),
+  the section list, and the link icons. From `sm` it spans every row of
+  the body and is sticky, so it stays in view down the whole page: 4 rem
+  from the top, or, when it's taller than the window (a short laptop
+  screen), stuck by its bottom edge 16 px above the window's, so the list
+  and links stay reachable.
+- **Section list** (`SectionNav`, two or more sections): uppercase
+  11 px rows with hairlines and a right arrow, a count before it when
+  given (Seasons 2). Links scroll on the same page (smooth unless reduced
+  motion; `scroll-padding-top` clears the header). Scroll-spy: the
+  section whose top has passed a third of the way down the window is
+  current (`aria-current="true"`): `ink`, the arrow in `accent-text`, and
+  a 2 px accent bar left of the row; at the bottom of the page, the last
+  section showing. A section that was just picked stays current while the
+  page scrolls to it (a short last section can't reach the line) until
+  the reader scrolls again. Phones: the column shows only the poster and
+  link icons; the list becomes a strip of filter-style links (40 px,
+  current one with the accent border and tint) that scrolls sideways,
+  just above the sections, and only on pages that have them.
+- **Link icons** (`ExternalLinks`): the title on IMDb and TMDB (when TMDB
+  knows the IMDb ID), as 40 px square tiles (`surface`, `line` border,
+  `rounded-md`; hover `raised` and `line-strong`) that wrap under the
+  section list (under the poster on phones). Each opens a new tab; its
+  name is "The Matrix on IMDb (opens in a new tab)", the site in the
+  tooltip. The marks (`SourceMark`) are watcht's own text marks, not the
+  sites' logos: "IMDb" in a filled `ink` box, "TMDB" in an outlined pill.
+  TMDB's logo is far too wide to read at this size and stays on the About
+  page (see Footer and attribution). IDs are not facts.
+- **Facts** (`Facts`): label/value pairs that wrap across the main
+  column, under the band. Empty values are dropped. Movie: Released,
+  Runtime, Status, Genres, Original title (when different), Language.
+  Show: Aired, Status, Episodes, Genres, Original title, Language. A
+  visually hidden "Overview" `h2` heads them (the list's first target).
+- Under the facts, in the main column: tagline (italic, `muted`), then
+  the overview (max 72ch); a show's seasons follow there too.
+- **Action column** (`actions` snippet): the classic right-hand column on
+  `lg`, beside the facts and overview; under the overview below `lg`
+  (beside the sticky poster column on tablets). Not sticky. A flexible
+  grid row takes up its extra height, so the overview never moves when it
+  grows; the sections below start under whichever is taller. Show pages:
+  the mark split button. Results are toasts (see Toasts).
+- **Movie action column** (`MovieActions`), after classic Trakt's play
+  button. One split button states and changes the watched state, then
+  the actions still to come; results are toasts (see Toasts). No list of watches under it
+  (maintainer decision, 2026-11-06); the plays are in its menu.
+  - *Not watched:* the mark split button, "Mark as watched" (marks it
+    just now) with a + that opens the when-choice (see Mark split
+    button).
+  - *Watched* (`PlaysButton`): the same split shape, 48 px, filled
+    `watched` with `surface` text (4.9 light, 6.9 dark; `watched-hover`
+    on hover and while its menu is open). The main part has the check, the
+    count ("2 plays", 14 px 600) and the latest play (`formatWatch`, 12 px)
+    on a second line; its name is "2 plays, latest 6 Nov 2026, 22:31. Your
+    plays of The Matrix". It opens the plays menu (below). The + (48 px
+    square, a `surface` 30% divider) opens the when-choice to add another
+    play; it stays enabled while a play is added, so focus isn't lost.
+  - When one button replaces the other, focus follows: the first play
+    moves it to the plays button, removing the last moves it to "Mark as
+    watched".
+  - If the plays fail to load, the page still shows: "Mark as watched",
+    and the error with "Try again".
+  - Under it, placeholders (`PlaceholderActions`): full-width quiet
+    buttons "Add to watchlist" and "Rate it" (M4 slice 3) and "Where to
+    watch" (backlog), 40 px, 8 px apart, each with an icon. Nothing for
+    features that aren't planned (favourites, lists, comments).
+- **Plays menu** (`PlaysButton`, on the shared `MenuPopover` shell; see
+  The watched check's tooltip and menu for its behaviour): 288 px, no
+  header row (the button already shows the count; maintainer decision,
+  2026-11-06). The dialog is named "Plays of The Matrix" and takes focus
+  itself on open, as the history menu does. It starts with every play of
+  the movie, newest first (the API returns them all, unpaged): date and
+  time, a source badge when not manual, and a trash button ("Remove the
+  play from …"). Past about five rows the list scrolls inside the menu
+  (17 rem tall on phones, 14 rem from `sm`, never more than the window
+  less 13 rem; `overscroll-contain`), so the menu never grows past the
+  window; focus moving to a row (arrow keys, a confirm) scrolls it into
+  view. The trash opens an `InlineConfirm` under the row ("Remove the play
+  from … from your history?", "Remove play" / "Cancel"); Esc inside the
+  confirm cancels just the confirm, and anywhere else in the menu closes
+  it. No undo: a play from Plex, Jellyfin, or an import can't be
+  re-created through the manual mark. After a removal the menu stays open
+  and focus moves to the next play's trash button. Fixed under the list
+  (not in it), above a hairline: "Remove all plays" (placeholder, as in
+  the history menu) and "View all plays" (a link to `/history`, with
+  "Your whole history; filters come later" under it, since history can't
+  be filtered to one title yet). No "Keep it" and no ×: Esc, a click or
+  tap outside, focus leaving, or the button itself close it.
 - **Season header:** the season's "x of y watched" (listed episodes only)
   with a 64 px sage progress bar, then a quiet "Mark season watched".
+
+### Sections under the overview (`below` snippet)
+
+Movies have Stats, People, Videos, and Recommendations (shows get them
+later; their main section stays Seasons). They span the main and action
+columns on `lg`. Each is a `TitleSection`: an 18 px heading with no
+hairline under it (unlike Seasons; maintainer decision, 2026-11-06), a
+filter on the right, a `muted` line saying what's coming, then the
+content. Until their data exists they are placeholders (see
+Placeholders): static shapes on `raised` in the real layout, with no
+names, counts, or scores that aren't real.
+
+- **Stats** (`StatsSection`), three parts:
+  - *Other sites' scores* ("second opinions", after Trakt), straight under
+    the Stats heading with no sub-heading of their own; the list is named
+    "Ratings from other sites" for screen readers. A row per source: mark
+    tile, name and vote count,
+    the score in a `raised` box, a bar (`accent` on a `raised` track, the
+    score out of 10). TMDB's row is real (its vote average and count);
+    then "More sites' scores are coming in a later update." No difference
+    column until watcht has a score of its own to compare with.
+  - *Household ratings* (a 16 px `h3`): ten empty bar slots on one baseline, labelled
+    1–10 with a heart; then four figures with a 2 px `line` top rule:
+    Average, Ratings, Most given, Liked it (rated 7 or higher), each an
+    empty value shape (named "Not available yet" for screen readers) and
+    a caption.
+  - *Household activity* (a 16 px `h3`): tiles (`surface`, `line` border) for Watchers,
+    Plays, and Watchlists. Trakt's favourites, lists, and comments tiles
+    are left out: comments are a non-goal (social features) and the others
+    aren't planned.
+- **People** (`PeopleSection`): a "Cast ▾" filter placeholder and a row
+  of 2:3 person tiles (a person glyph, name and role bars).
+- **Videos** (`VideosSection`): a "Trailers ▾" filter placeholder and a
+  row of 16:9 tiles (a play glyph, a title bar).
+- **Recommendations** (`RecommendationsSection`): "If you like
+  The Matrix, check out…" and a row of 2:3 poster shapes on the poster
+  card grid.
+- Rows of tiles (`PlaceholderRow`) fill the width and keep only their
+  first row (`auto-fill` columns, the rest clipped), so a row is full at
+  every width.
 
 ## Artwork (`Artwork`)
 
@@ -177,7 +317,7 @@ is on); never build TMDB URLs. `referrerpolicy="no-referrer"`;
 
 | Kind | Ratio | Source size | Shown at |
 | --- | --- | --- | --- |
-| Poster | 2:3 | `poster_url` (w342) | 96 / 136 / 176 px on title pages; 150–175 px in poster cards; 40 px in the overlay; 56–64 px on the search page |
+| Poster | 2:3 | `poster_url` (w342) | 112 / 160 / 192 / 224 px on title pages; 150–175 px in poster cards; 40 px in the overlay; 56–64 px on the search page |
 | Still | 16:9 | `still_url` (w300) | 120 px (phone), 208 px |
 | Backdrop | cover | `backdrop_url` (w1280) | Full-width hero |
 
@@ -193,8 +333,6 @@ with a soft shadow.
     an aired episode's date).
   - `quiet` (`raised` + `muted`): secondary facts (runtime, TMDB score).
   - `outline`: not yet (an upcoming air date, "No air date").
-- Hero chips are the screen's own style (translucent `screen`, 20% white
-  border), 24 px tall.
 - Filters and pickers are buttons or links, 32 px tall, `rounded-md`:
   `border-line` + `bg-surface`; selected season is an accent fill;
   pressed filter is an accent border with a 15% accent tint; a season
@@ -215,23 +353,33 @@ with a soft shadow.
   focusable with `aria-disabled="true"`, a name for what they will do,
   and a tooltip plus accessible description saying "Coming in a later
   update". No made-up data (counts, options) in or next to them. Used by
-  the poster card's watchlist button, the card menu's "Remove all plays",
-  and the history toolbar.
+  the poster card's watchlist button, the history and plays menus'
+  "Remove all plays", the history toolbar, the movie action column's
+  watchlist, rating, and where-to-watch buttons, and the title page's
+  section filters
+  (`PlaceholderFilter`, described by the section's "coming" line).
+  Content that comes later is shown as static shapes on `raised` (no
+  pulse, which means loading) with one `muted` line saying what's coming.
 - **Mark split button** (`MarkButton`): the main part marks it watched
   just now in one click (check icon + label: "Mark as watched", "Mark
   season watched", "Mark show watched"); the chevron opens the
-  when-choice. `primary` (40 px) in the action column, `quiet` (32 px)
-  for a section. Busy shows a spinner in the main part. When it can't be
-  used, both parts are disabled and the reason is shown under it in
+  when-choice. In the movie's action column the chevron is a + instead
+  (`menuIcon="plus"`, as on `PlaysButton`), which turns 45° into an ×
+  while the menu is open (200 ms; instant with reduced motion). Show and
+  season marks keep the chevron for now. `primary` (40 px) in the action column, `quiet` (32 px)
+  for a section. Busy shows a spinner in the main part (`aria-busy`);
+  both parts stay enabled while a mark runs, so keyboard focus isn't
+  dropped, and a second mark is ignored. When it can't be used, both
+  parts are disabled and the reason is shown under it in
   `muted` 12 px, which is also their `aria-describedby` ("Some episodes
   are still being fetched from TMDB…", "Nothing in this season has aired
   yet."). Season and show marks are off while episodes are still being
-  fetched (the server refuses them with `episodes_pending`). Result
-  notes go under it as `Notice`s: "Added to your history: …", "Already
-  in your history: …" (a repeat within 3 hours merges; not an error),
-  "Added 8 episodes to your history.", and for 0 added "Nothing added:
-  every aired episode is already watched." or "Nothing added: nothing
-  has aired yet."
+  fetched (the server refuses them with `episodes_pending`). Results are
+  toasts (see Toasts): success "Added to your history: …", "Season 1:
+  Added 8 episodes to your history."; info "Already in your history: …"
+  (a repeat within 3 hours merges; not an error) and for 0 added
+  "Nothing added: every aired episode is already watched." or "Nothing
+  added: nothing has aired yet."; a failed mark is an error toast.
 - **When-choice** (`WhenMenu`, its options in `WhenChoices`, which the
   history card's menu shares): a disclosure like the user menu, under its
   trigger, 288 px (never wider than the screen less 2 rem). "When did you
@@ -262,8 +410,9 @@ with a soft shadow.
   another watch. Unaired episodes (no air date, or not out yet) can
   still be marked just now or at another date (maintainer decision); the
   outline "Airs …" or "No air date" badge says they haven't aired, and
-  only the menu's "Air date" is off. The row shows its own result or
-  error in small text under the overview. While the watched episodes
+  only the menu's "Air date" is off. Its result or error is a toast that
+  names the episode ("Added S01E02 to your history: …", "S01E02: …"),
+  since it floats away from the row; focus stays on the row's chevron. While the watched episodes
   can't be loaded, rows have no check (and the season no progress), so
   nothing looks unwatched by mistake; the action column says so with
   "Try again".
@@ -317,17 +466,29 @@ S04E05 Mercy Mi…   caption, centred, one line: 15 px 600, code in accent-text
   - Rating: a filled heart in `on-screen-accent` and TMDB's vote average
     as a percentage (`tmdbPercent`, 12 px 600 `on-screen`), labelled "TMDB
     rating 67%" for screen readers. Display only; hidden with no votes.
-- **Source chip:** hero-chip style (`screen` at 80%, 20% white border,
+- **Source chip:** the screen's chip style (`screen` at 80%, 20% white border,
   11 px 600 `on-screen`), hidden from screen readers; the caption carries
   "recorded by Plex" as visually hidden text instead.
 
 ### The watched check's tooltip and menu
 
 Both are native popovers (the Popover API), so they sit in the top layer:
-no card, sticky heading, or overflow clips or covers them. They are
+no card, sticky heading, or overflow clips or covers them. The menu's
+shell is `MenuPopover`, which the movie's plays menu shares: placement,
+focus on open and return, arrow keys over `data-item` rows, closing when
+focus leaves, an optional title and × header (the history menu has one;
+without it the dialog is named by its `label`), an error `Notice` at its
+foot, and
+the shared rows (`menuItem`, the trash icon, the "Remove all plays"
+placeholder, "Keep it") as snippets. They are
 placed in script next to the check (`placeNear` in `#lib/anchor.js`):
-inside the viewport with an 8 px margin, and they follow it on scroll and
-resize. Never put display utilities on a popover element itself (they
+inside the viewport with an 8 px margin and never over the sticky header
+(it's marked `data-app-header`; `coveredTop()` reads its bottom edge), and
+they follow it on scroll and resize while it's in view. Once the anchor
+has left the view (`outOfView`: scrolled up under the header, or off the
+window), the menu closes and the tooltip hides, rather than being held at
+the window's edge over the header; focus that was in the menu goes back
+to the anchor without scrolling. Never put display utilities on a popover element itself (they
 would override the hidden state); style an inner wrapper.
 
 - **Tooltip** (`role="tooltip"`, the check's `aria-describedby`): "Watched
@@ -362,7 +523,7 @@ would override the hidden state); style an inner wrapper.
   time (the browser closes the other `auto` popover).
 - **Results:** removing focuses the next card's check (the heading when
   nothing is left); adding closes the menu and returns focus to the check.
-  The note goes to the page (see History).
+  The result is a toast (see Toasts); a failure stays in the open menu.
 
 ## Search overlay (`SearchOverlay`, `SearchView`)
 
@@ -416,24 +577,86 @@ would override the hidden state); style an inner wrapper.
     as the keyboard and no-observer fallback and focuses the first new
     card. A failed page shows the error and "Try again" instead of
     retrying. At the end, "That's the start of your history." The cards'
-    menus report in a success note fixed at the bottom of the window
-    (centred, max 28 rem, on `surface` with a shadow; announced, and it
-    clears after 8 s), since the card may be far down the page: "Removed
-    …", "Added to your history: …" (the new card appears in its place by
-    time; one older than everything loaded while more pages remain arrives
-    as you scroll, and the note says so), or "Already counted: …" when the
-    play is within 3 hours of an existing one and the server merged it.
+    menus report in toasts (see Toasts): "Removed …", "Added to your
+    history: …" (the new card appears in its place by time; one older than
+    everything loaded while more pages remain arrives as you scroll, and
+    the toast says so), or, as info, "Already counted: …" when the play is
+    within 3 hours of an existing one and the server merged it.
 - **Empty:** say what's empty and what to do ("No shows or movies match
   “x”. Check the spelling, or try the original title.").
-- **Error:** `Notice tone="error"` with the mapped message
-  (`errorMessage(e, catalogMessages)`) and a quiet retry button. Page
+- **Error:** an error that belongs to a control or state stays inline: a
+  `Notice tone="error"` with the mapped message (`errorMessage(e,
+  catalogMessages)`) and a quiet retry button for a failed load, the
+  disabled reason under a button, a field's error, or an error inside an
+  open menu or confirm. A failed action with no menu open is an error
+  toast (see Toasts). Page
   load errors render `(app)/+error.svelte` inside the header and footer:
   status, a plain heading ("Title not found"), the message, and a way on
   (Search, dashboard, or Try again).
 
+## Toasts (`Toaster`, `#lib/toast.svelte.js`)
+
+Action results float as toasts and time out, the same everywhere
+(maintainer decision, 2026-11-06), instead of notes under the control.
+
+- **One Toaster**, in the `(app)` layout. Call `toast.success(msg)`,
+  `toast.info(msg)`, or `toast.error(msg)` from anywhere.
+- **Where:** fixed under the header (8 px below it). From `sm`, top right,
+  352 px wide, its right edge on the column's (`max(1.5rem, (100vw −
+  80rem) / 2 + 1.5rem)`); on phones, full width less 8 px a side (the
+  planned tab bar takes the bottom). Clicks pass through the gaps.
+- **Stack:** newest on top, at most 3 (older ones drop off). Errors stack
+  above the rest, since they stay. The same toast again (a repeated
+  action) replaces the shown one, back on top with a fresh timeout,
+  rather than stacking copies.
+- **Timeout:** success and info go after 5 s, held while hovered or
+  focused (it runs again only when it's neither), then run for the time
+  they had left. Errors stay until dismissed. Each has a × ("Dismiss", 40
+  px on phones, 32 px from `sm`); dismissing from the keyboard moves focus
+  to the next toast's × (not with the mouse, which would hold that one).
+- **Per session:** the store is cleared on sign-out and whenever the
+  signed-in pages mount or unmount (an expired session sending you to
+  /login), so the next person on a shared device never sees them.
+- **Look:** `surface`, `rounded-lg`, the menus' shadow, `line` border
+  (`danger` at 40% for errors), 14 px `ink` text, and a 16 px icon: a
+  sage (`watched`) check in a circle for success, `muted` "i" for info,
+  `danger` "!" for errors.
+- **Tone:** success when something changed; info when nothing went wrong
+  but nothing changed ("Already in your history: …", "Nothing added: …");
+  error when it failed. A toast names what it's about when it floats away
+  from where it came from ("S01E02 …", "Season 1: …").
+- **Above menus:** popovers sit in the top layer, where z-index doesn't
+  reach, so the stack is itself a `popover="manual"`, always open. When a
+  menu (or a non-modal dialog) opens, the stack is raised (hidden and
+  shown again, which makes it the newest top-layer element): at once if
+  toasts are showing, otherwise just before the next toast is inserted,
+  and only if that menu is still open. Usually nothing is open, so the
+  live regions are never hidden; when they are, it's before the new text
+  arrives, so it's still announced. Focus on a toast's × is put back after
+  a raise. Tooltips don't raise it. A modal dialog (the search overlay)
+  is never covered: everything outside it is inert, so toasts there
+  couldn't be dismissed; they wait under it.
+- **Accessibility:** two live regions are always mounted, so the first
+  toast is announced: `role="alert"` for errors, `role="status"`
+  (`aria-live="polite"`) for the rest. Toasts never take focus; the page
+  keeps its own focus moves (the next card's check after a removal on
+  /history, the plays button after a first play). Enter and exit are a
+  short 8 px fly (160 / 120 ms) and the stack slides (`flip`), all off
+  with reduced motion (checked in script, since Svelte's transitions
+  don't follow the CSS rule).
+- **What stays inline (`Notice`):** errors that belong to a control or a
+  state (a failed load with "Try again", a disabled reason, a field's
+  error, an error inside an open menu or confirm) and form results whose
+  content must stay in place (a new API token to copy, a changed
+  password, admin user changes on their pages).
+
 ## Navigation
 
-- **Desktop:** sticky 48 px header on `surface`: wordmark (dashboard),
+- **Desktop:** sticky 48 px header, glass: `surface` at 85% with
+  `backdrop-blur-xl` and `backdrop-saturate-150`, with no hairline under
+  it (maintainer decision, 2026-11-06). Pages scroll under it; title pages
+  start their hero under it. It
+  holds the wordmark (dashboard),
   main nav, the Search control (field-styled, `/` hint), user menu
   (initial, name, chevron). Page links (History now, Watchlist in M4)
   sit after the wordmark as text links; the current one is `ink` and
@@ -485,7 +708,8 @@ proportions. The footer credit and the About attribution must both stay.
   chevron flipping, spinners and skeleton pulses while waiting. No
   entrance animations, no parallax.
 - `prefers-reduced-motion: reduce` turns animations and transitions off
-  globally (layout.css); smooth anchor scrolling only without it.
+  globally (layout.css); smooth anchor scrolling (the section list) only
+  without it.
 
 ## Accessibility checklist
 

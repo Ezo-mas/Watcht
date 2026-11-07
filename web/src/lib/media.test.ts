@@ -8,6 +8,7 @@ import {
 	parseId,
 	parseSeasonParam,
 	seasonLabel,
+	titleLinks,
 	tmdbPercent,
 	yearOf
 } from './media';
@@ -73,5 +74,15 @@ describe('media helpers', () => {
 		expect(parseId('603')).toBe(603);
 		for (const bad of ['0', '-1', '01', 'abc', '1e3', '2147483648'])
 			expect(parseId(bad)).toBeNull();
+	});
+
+	it('links a title to IMDb and TMDB', () => {
+		expect(titleLinks('movie', 603, 'tt0133093')).toEqual([
+			{ site: 'imdb', label: 'IMDb', href: 'https://www.imdb.com/title/tt0133093/' },
+			{ site: 'tmdb', label: 'TMDB', href: 'https://www.themoviedb.org/movie/603' }
+		]);
+		expect(titleLinks('tv', 1396, '')).toEqual([
+			{ site: 'tmdb', label: 'TMDB', href: 'https://www.themoviedb.org/tv/1396' }
+		]);
 	});
 });

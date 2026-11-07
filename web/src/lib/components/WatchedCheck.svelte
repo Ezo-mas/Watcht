@@ -1,11 +1,18 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import type { MarkWhen } from '#lib/api/types.js';
-	import { placeNear } from '#lib/anchor.js';
+	import { coveredTop, outOfView, placeNear } from '#lib/anchor.js';
 	import { formatWatchDay } from '#lib/format.js';
 	import { formatRuntime } from '#lib/media.js';
 	import type { ReleaseOption } from '#lib/when.js';
-	import Notice from './Notice.svelte';
+	import MenuPopover, {
+		keepIt,
+		menuIcon,
+		menuItem,
+		removeAllPlaceholder,
+		spinner,
+		trashIcon
+	} from './MenuPopover.svelte';
 	import WhenChoices from './WhenChoices.svelte';
 
 	interface Props {
@@ -40,13 +47,13 @@
 	// click opens a small dialog: remove this play, keep it, or add another.
 	// Both popups use the Popover API, so they sit in the top layer: the
 	// card, the next card, and the sticky day heading can't cover or clip
-	// them. Only one menu ("auto" popover) is open at a time; Esc and a
-	// click outside close it (the browser's light dismiss).
+	// them. The menu is the shared MenuPopover shell (placement, focus,
+	// keys, light dismiss).
 
 	const uid = $props.id();
 	let trigger = $state<HTMLButtonElement>();
 	let tip = $state<HTMLElement>();
-	let menu = $state<HTMLElement>();
+	let menu = $state<MenuPopover>();
 	let whenBox = $state<HTMLElement>();
 
 	let menuOpen = $state(false);
@@ -62,41 +69,21 @@
 		return { width: document.documentElement.clientWidth, height: window.innerHeight };
 	}
 
-	// The side the menu opened on; it keeps it while open (shifting to fit
-	// as it grows) instead of jumping across the check.
-	let menuSide: 'below' | 'above' = 'below';
-
-	function place(el: HTMLElement | undefined, prefer: 'below' | 'above', flip = true) {
-		if (!el || !trigger || !el.matches(':popover-open')) return 'below';
-		const at = placeNear(
-			trigger.getBoundingClientRect(),
-			{ width: el.offsetWidth, height: el.offsetHeight },
-			viewport(),
-			{ prefer, flip }
-		);
-		el.style.top = `${at.top}px`;
-		el.style.left = `${at.left}px`;
-		return at.side;
-	}
-
-	// Set as it opens: the first placement (often the ResizeObserver's,
-	// before the toggle event) picks the side.
-	let fresh = false;
-
-	function placeMenu() {
-		if (fresh) {
-			fresh = false;
-			menuSide = place(menu, 'below');
-		} else place(menu, menuSide, false);
-	}
-
-	// Runs as the menu opens or closes (toggle comes later). Closing with
-	// focus inside, the browser puts focus back on the check right away:
-	// that focus is quiet, so the tooltip doesn't pop up again.
-	function onbeforetoggle(event: ToggleEvent) {
-		menuOpen = event.newState === 'open';
-		if (menuOpen) fresh = true;
-		else if (menu?.contains(document.activeElement)) quietFocus = true;
+	function placeTip() {
+		if (!tip || !trigger || !tip.matches(':popover-open')) return;
+		const box = trigger.getBoundingClientRect();
+		const inset = coveredTop();
+		// Like the menu: the check scrolled out of view, so the tooltip goes.
+		if (outOfView(box, viewport(), inset)) {
+			hideTip();
+			return;
+		}
+		const at = placeNear(box, { width: tip.offsetWidth, height: tip.offsetHeight }, viewport(), {
+			prefer: 'above',
+			insetTop: inset
+		});
+		tip.style.top = `${at.top}px`;
+		tip.style.left = `${at.left}px`;
 	}
 
 	// The tooltip: on hover (not touch) and keyboard focus. It stays while
@@ -116,7 +103,7 @@
 			return;
 		}
 		tipOpen = true;
-		place(tip, 'above');
+		placeTip();
 	}
 
 	function hideTip() {
@@ -146,50 +133,21 @@
 		}
 	}
 
-	// The menu.
-
-	function ontoggle(event: ToggleEvent) {
-		menuOpen = event.newState === 'open';
-		if (menuOpen) {
-			hideTip();
-			placeMenu();
-			// The dialog itself, not "Only this play": a second Enter mustn't remove.
-			menu?.focus({ preventScroll: true });
-			return;
+	// The menu (MenuPopover): as it opens the tooltip goes; once it has
+	// closed (and focus is back on the check), the "add another" choice
+	// folds away, errors clear, and the next focus may show the tooltip
+	// again: quietFocus only covers focus coming back from the menu.
+	function onMenuChange(open: boolean) {
+		if (open) hideTip();
+		else {
+			adding = false;
+			error = '';
+			quietFocus = false;
 		}
-		adding = false;
-		error = '';
-		// Back to the check when focus was in the menu (Esc, Keep it, a click
-		// on empty page), not when it moved somewhere on purpose.
-		const active = document.activeElement;
-		if (trigger?.isConnected && (!active || active === document.body || menu?.contains(active))) {
-			quietFocus = true;
-			trigger.focus();
-		}
-		quietFocus = false;
 	}
 
 	function close() {
-		if (menu?.isConnected && menu.matches(':popover-open')) menu.hidePopover();
-	}
-
-	// Up and down move between the items; Tab works as usual. Focus leaving
-	// for somewhere else closes it.
-	function onMenuKeydown(event: KeyboardEvent) {
-		if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || !menu) return;
-		const items = [...menu.querySelectorAll<HTMLElement>('[data-item]')];
-		const at = items.indexOf(document.activeElement as HTMLElement);
-		if (at === -1 && document.activeElement !== menu) return;
-		event.preventDefault();
-		const step = event.key === 'ArrowDown' ? 1 : items.length - 1;
-		const next =
-			at === -1 ? (event.key === 'ArrowDown' ? 0 : items.length - 1) : (at + step) % items.length;
-		items[next].focus();
-	}
-
-	function onfocusout(event: FocusEvent) {
-		const next = event.relatedTarget as Node | null;
-		if (next && menu && !menu.contains(next) && next !== trigger) close();
+		menu?.close();
 	}
 
 	async function removeOne() {
@@ -219,34 +177,18 @@
 		else close();
 	}
 
-	// Follow the check while the page scrolls or resizes, and re-place the
-	// menu when its size changes (opening it, or the date field).
+	// The tooltip follows the check while the page scrolls or resizes.
 	$effect(() => {
-		if (!menuOpen && !tipOpen) return;
-		const follow = () => {
-			placeMenu();
-			place(tip, 'above');
-		};
-		window.addEventListener('scroll', follow, { capture: true, passive: true });
-		window.addEventListener('resize', follow);
+		if (!tipOpen) return;
+		window.addEventListener('scroll', placeTip, { capture: true, passive: true });
+		window.addEventListener('resize', placeTip);
 		return () => {
-			window.removeEventListener('scroll', follow, { capture: true });
-			window.removeEventListener('resize', follow);
+			window.removeEventListener('scroll', placeTip, { capture: true });
+			window.removeEventListener('resize', placeTip);
 		};
-	});
-
-	$effect(() => {
-		if (!menu) return;
-		const observer = new ResizeObserver(placeMenu);
-		observer.observe(menu);
-		return () => observer.disconnect();
 	});
 
 	$effect(() => () => clearTimeout(hideTimer));
-
-	const item =
-		'flex min-h-10 w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors focus-visible:-outline-offset-2 sm:min-h-9';
-	const icon = 'size-4 shrink-0';
 </script>
 
 <button
@@ -301,85 +243,30 @@
 		>{/if}
 </div>
 
-<div
+<MenuPopover
 	bind:this={menu}
+	bind:open={menuOpen}
 	id="{uid}-menu"
-	popover="auto"
-	role="dialog"
-	aria-labelledby="{uid}-title"
-	tabindex="-1"
-	{onbeforetoggle}
-	{ontoggle}
-	onkeydown={onMenuKeydown}
-	{onfocusout}
-	class="inset-auto m-0 max-h-[calc(100dvh-1rem)] w-64 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-line bg-surface text-ink shadow-[0_12px_32px_rgb(0_0_0/0.25)] focus-visible:outline-offset-0"
+	title="Remove from history?"
+	anchor={trigger}
+	onchange={onMenuChange}
+	onreturnfocus={() => (quietFocus = true)}
+	{error}
+	class="w-64"
 >
-	<div class="flex items-center justify-between gap-2 border-b border-line py-1 pr-1 pl-3">
-		<p id="{uid}-title" class="text-sm font-semibold">Remove from history?</p>
-		<button
-			type="button"
-			aria-label="Close"
-			onclick={close}
-			class="grid size-10 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-ink sm:size-8"
-		>
-			<svg
-				aria-hidden="true"
-				viewBox="0 0 16 16"
-				class="size-3.5"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg
-			>
-		</button>
-	</div>
-
 	<div class="py-1">
 		<button
 			type="button"
 			data-item
 			aria-busy={busy === 'remove' || undefined}
 			onclick={removeOne}
-			class={[item, 'text-danger hover:bg-danger/10']}
+			class={[menuItem, 'text-danger hover:bg-danger/10']}
 		>
-			{#if busy === 'remove'}
-				<span
-					aria-hidden="true"
-					class="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
-				></span>
-			{:else}
-				{@render trash()}
-			{/if}
+			{#if busy === 'remove'}{@render spinner()}{:else}{@render trashIcon()}{/if}
 			Only this play
 		</button>
-		<!-- Removing every play of it needs a new endpoint (later); until then it says so. -->
-		<button
-			type="button"
-			data-item
-			aria-disabled="true"
-			aria-label="Remove all plays"
-			aria-describedby="{uid}-all"
-			title="Coming in a later update"
-			class={[item, 'cursor-not-allowed text-muted']}
-		>
-			{@render trash()}
-			<span>
-				Remove all plays
-				<span id="{uid}-all" class="block text-xs">Coming in a later update</span>
-			</span>
-		</button>
-		<button type="button" data-item onclick={close} class={[item, 'hover:bg-raised']}>
-			<svg
-				aria-hidden="true"
-				viewBox="0 0 16 16"
-				class={icon}
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.8"
-				stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg
-			>
-			Keep it
-		</button>
+		{@render removeAllPlaceholder(`${uid}-all`)}
+		{@render keepIt(close)}
 	</div>
 
 	<hr class="border-line" />
@@ -391,18 +278,15 @@
 			aria-expanded={adding}
 			aria-controls="{uid}-when"
 			onclick={toggleAdding}
-			class={[item, 'hover:bg-raised']}
+			class={[menuItem, 'hover:bg-raised']}
 		>
 			{#if busy === 'add'}
-				<span
-					aria-hidden="true"
-					class="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
-				></span>
+				{@render spinner()}
 			{:else}
 				<svg
 					aria-hidden="true"
 					viewBox="0 0 16 16"
-					class={icon}
+					class={menuIcon}
 					fill="none"
 					stroke="currentColor"
 					stroke-width="1.6"
@@ -418,22 +302,4 @@
 			{/if}
 		</div>
 	</div>
-
-	<Notice tone="error" message={error} class="mx-2 mb-2" />
-</div>
-
-{#snippet trash()}
-	<svg
-		aria-hidden="true"
-		viewBox="0 0 16 16"
-		class={icon}
-		fill="none"
-		stroke="currentColor"
-		stroke-width="1.6"
-		stroke-linecap="round"
-		stroke-linejoin="round"
-		><path
-			d="M2.75 4.25h10.5M6.25 4.25V2.75h3.5v1.5M4 4.25l.65 9h6.7l.65-9M6.75 6.75v4M9.25 6.75v4"
-		/></svg
-	>
-{/snippet}
+</MenuPopover>

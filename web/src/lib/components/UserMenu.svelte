@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { logout } from '#lib/api/auth.js';
 	import { ApiError } from '#lib/api/client.js';
+	import { toast } from '#lib/toast.svelte.js';
 	import type { User } from '#lib/api/types.js';
 
 	interface Props {
@@ -71,6 +72,8 @@
 				return;
 			}
 		}
+		// The next person on a shared device mustn't see this session's toasts.
+		toast.clear();
 		await goto(resolve('/login'), { invalidate: ['app:session'] });
 		signingOut = false;
 	}

@@ -4,6 +4,7 @@
 	import AppFooter from '#lib/components/AppFooter.svelte';
 	import Kbd from '#lib/components/Kbd.svelte';
 	import SearchOverlay from '#lib/components/SearchOverlay.svelte';
+	import Toaster from '#lib/components/Toaster.svelte';
 	import UserMenu from '#lib/components/UserMenu.svelte';
 	import Wordmark from '#lib/components/Wordmark.svelte';
 	import { searchOverlay } from '#lib/search-overlay.svelte.js';
@@ -44,7 +45,15 @@
 <svelte:window {onkeydown} />
 
 <div class="flex min-h-dvh flex-col">
-	<header class="sticky top-0 z-20 border-b border-line bg-surface">
+	<!--
+		Glass: the surface at 85% with a blur, so the page (and a title's
+		hero) shows through; no hairline under it. 85% keeps muted text at
+		AA over black or white underneath (DESIGN.md, Navigation).
+	-->
+	<header
+		data-app-header
+		class="sticky top-0 z-20 bg-surface/85 backdrop-blur-xl backdrop-saturate-150"
+	>
 		<div class="mx-auto flex h-12 w-full max-w-7xl items-center gap-3 px-4 sm:gap-6 sm:px-6">
 			<a href={resolve('/(app)')} class="-mx-1 rounded-sm px-1 py-1">
 				<Wordmark />
@@ -93,7 +102,8 @@
 		</div>
 	</header>
 
-	<main class={fullBleed ? 'flex-1' : 'mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6'}>
+	<!-- A title's hero starts under the header. -->
+	<main class={fullBleed ? '-mt-12 flex-1' : 'mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6'}>
 		{@render children()}
 	</main>
 
@@ -101,3 +111,5 @@
 </div>
 
 <SearchOverlay />
+<!-- Action results, floating under the header (DESIGN.md, Toasts). -->
+<Toaster />

@@ -15,6 +15,7 @@
 	import { dayHeading, dayTotal, groupByDay, insertEntry } from '#lib/history.js';
 	import { episodeCode, tmdbPercent } from '#lib/media.js';
 	import { searchOverlay } from '#lib/search-overlay.svelte.js';
+	import { toast } from '#lib/toast.svelte.js';
 	import { sourceLabel } from '#lib/watched.js';
 	import { browserTimeZone, releaseOption, type ReleaseOption } from '#lib/when.js';
 	import type { PageProps } from './$types';
@@ -29,7 +30,6 @@
 	const zone = browserTimeZone();
 
 	let heading = $state<HTMLElement>();
-	let note = $state('');
 
 	// More pages: loaded as the end of the list scrolls near, or with the
 	// "Load more" button (keyboard users, no IntersectionObserver).
@@ -80,14 +80,6 @@
 		return () => observer.disconnect();
 	}
 
-	// The success note, fixed at the bottom of the window: the card acted on
-	// may be far down the page. It clears itself after a while.
-	$effect(() => {
-		if (!note) return;
-		const timer = setTimeout(() => (note = ''), 8000);
-		return () => clearTimeout(timer);
-	});
-
 	function describe(entry: HistoryEntry): string {
 		const ep = entry.episode;
 		if (ep) return `${ep.show.name} ${episodeCode(ep.season_number, ep.episode_number)}`;
@@ -95,10 +87,10 @@
 	}
 
 	// The card's watched check opens a menu: remove this play, or add another.
+	// Results are toasts (DESIGN.md, Toasts); failures stay in the open menu.
 
 	/** Removes one watch; "" when done, else the message for the menu. */
 	async function removeOne(entry: HistoryEntry): Promise<string> {
-		note = '';
 		try {
 			await removeWatch(entry.id);
 		} catch (e) {
@@ -110,7 +102,7 @@
 		const at = entries.findIndex((e) => e.id === entry.id);
 		const next = entries[at + 1] ?? entries[at - 1];
 		entries = entries.filter((e) => e.id !== entry.id);
-		note = `Removed ${describe(entry)}, watched ${formatWatch(entry)}.`;
+		toast.success(`Removed ${describe(entry)}, watched ${formatWatch(entry)}.`);
 		await tick();
 		// Focus the next card's check, so a run of removals stays in place;
 		// the heading when the list is now empty.
@@ -122,7 +114,6 @@
 
 	/** Marks it watched again; "" when done, else the message for the menu. */
 	async function addPlay(entry: HistoryEntry, when: MarkWhen): Promise<string> {
-		note = '';
 		let res: MarkResult;
 		try {
 			const ep = entry.episode;
@@ -135,18 +126,22 @@
 		if (res.merged_into !== null) {
 			// A repeat within 3 hours counts as the same watch: no new card.
 			const kept = entries.find((e) => e.id === res.merged_into);
-			note = kept
-				? `Already counted: ${describe(entry)} has a play at ${formatWatch(kept)}, and plays within 3 hours count once.`
-				: `Already counted: ${describe(entry)} has a play within 3 hours of that time.`;
+			toast.info(
+				kept
+					? `Already counted: ${describe(entry)} has a play at ${formatWatch(kept)}, and plays within 3 hours count once.`
+					: `Already counted: ${describe(entry)} has a play within 3 hours of that time.`
+			);
 			return '';
 		}
 		const added = { ...entry, ...res.watch };
 		const placed = insertEntry(entries, added, cursor !== null);
 		entries = placed.entries;
 		const at = formatWatch(added);
-		note = placed.inserted
-			? `Added to your history: ${describe(entry)}, ${at}.`
-			: `Added to your history: ${describe(entry)}, ${at}. It's further down; scroll to reach it.`;
+		toast.success(
+			placed.inserted
+				? `Added to your history: ${describe(entry)}, ${at}.`
+				: `Added to your history: ${describe(entry)}, ${at}. It's further down; scroll to reach it.`
+		);
 		return '';
 	}
 
@@ -177,16 +172,6 @@
 <h1 bind:this={heading} tabindex="-1" class="sr-only">History</h1>
 
 <HistoryToolbar />
-
-<!--
-	Results of the cards' menus, announced, and shown at the bottom of the
-	window; the [&_p] variant puts the note on a solid surface over the grid.
--->
-<div
-	class="pointer-events-none fixed inset-x-4 bottom-4 z-30 flex justify-center [&_p]:pointer-events-auto [&_p]:bg-surface [&_p]:shadow-lg"
->
-	<Notice tone="success" message={note} class="max-w-md" />
-</div>
 
 {#if entries.length === 0 && cursor === null}
 	<div class="mt-6 flex max-w-4xl flex-col items-start gap-3 border-t border-line pt-5">

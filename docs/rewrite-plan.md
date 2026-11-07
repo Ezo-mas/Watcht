@@ -454,6 +454,17 @@ Each milestone ends with something runnable and is merged to `main` before the n
     - Marking a show skips specials (season 0), which are marked as their own season. If two listed seasons share a number, show and season marks both use the one with the lowest TMDB ID, as the page does. A season or show mark checks what's watched and inserts in one write transaction.
     - History pages by a cursor, `<unix seconds>_<watch id>` (seconds may be negative, for watches before 1970), over kept watches, newest first. 50 per page by default, at most 100. A watch time that truncates to Go's zero time is refused. Each entry carries the episode's `air_date`, the title's or episode's `runtime` (minutes, 0 when unknown) and TMDB `vote_average` for the cards; the day totals are summed in the browser, since day boundaries depend on the time zone.
     - A watched episode can't be unmarked by a click on the show page; removing a watch happens on `/history` (or the movie page's list of watches).
+  - UI pass (branch `ui-title-pages`), starting with the movie page, from maintainer screenshots (2026-11-06): a bigger poster, a translucent blurred header, a layout closer to Trakt's, IMDb and TMDB as icon links instead of ID facts, and sections under the overview (Stats, People, Videos, Recommendations) as placeholders until their data exists. Decided by the maintainer (2026-11-06):
+    - The section list under the poster scrolls to sections on the same page (highlighting the one in view); the poster and section list stay in view while scrolling. Sub-pages ("All people") can come later.
+    - The hero's ratings row shows TMDB's score only until M8 adds MDBList's sources; no greyed-out slots.
+    - A recommendations section is wanted on title pages (a placeholder for now), unlike the legacy app's recommendation blocks noted above.
+    - Follow the reference's structure, not its density: keep watcht's roomier spacing.
+    - No hairline under the header or above the ratings row. The ratings row shows the score only: the vote count is in its tooltip, with no "/ 10".
+    - The movie's action column: the mark button shows the play count and the latest watch once watched, and its + (which turns while open) adds another play. Clicking the button opens a plays menu listing every play (remove a play, remove all plays, view all plays), with no header or close button: Esc, a click outside, or the button closes it. Action results show as toasts that time out, across the app. The list of watches under the button is gone. Watchlist, rating, and where-to-watch placeholders sit below it.
+    - More facts like the reference's (director, writers, countries, studios, all release dates and the DVD date) are wanted later. They need TMDB's credits, release dates, and production details stored, which is a schema and provider change, so not this pass (see the Backlog).
+    - A separate episode route may be added in a later part of this pass.
+    - Confirmed after review of PR #30 (2026-11-07): the action column isn't sticky; Stats is scoped to the household for now (favorites, lists, and comments may come later); the hero has no runtime, status, or season-count chips (open: the maintainer may revisit this for shows).
+    - The show page gets its own pass in a separate PR, stacked on #30: the + for its mark buttons, the plays-style action column, its sections, and maybe an episode route.
   - For later milestones (from the slice 1 review):
     - M7: `source_event_id` is unique per user and source, so with more than one Jellyfin or Plex server the ID needs the server's ID in it. A repeated ID naming a different item is returned as a duplicate of the stored event. The webhook handler must cap the payload size and strip any token before calling `Record`.
     - M5: re-running an import after removing an imported watch brings that watch back, since removal frees its `source_event_id`.
@@ -499,6 +510,7 @@ Ideas the maintainer wants kept but hasn't scheduled into a milestone.
 - **Where to watch** (2026-11-03): a play button on poster cards that shows where a title can be streamed, if anywhere. TMDB's watch providers endpoint is the likely source.
 - **History filters and counts** (2026-11-03): the `/history` toolbar's controls, shown disabled until built: type (all, movies, episodes), a watched-date range, sort (field and direction), source (manual, Jellyfin, Plex, imports), and fade or hide filters; plus the number of items and plays. All need API support.
 - **Remove all plays** (2026-11-03): the history card menu's option to delete every watch of a movie or episode, shown disabled until built.
+- **More title facts** (2026-11-06): director, writers, production countries, studios, every release date, and the DVD date on detail pages, as on Trakt. Needs TMDB credits, `release_dates`, and production details stored in the catalog.
 
 ## Risks and open questions
 

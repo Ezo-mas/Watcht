@@ -140,9 +140,19 @@ Design tokens (colours, focus ring) are defined once in
 contrast. `src/error.html` repeats them inline because SvelteKit uses it
 when the app itself can't start; keep the two in step. Shared pieces live
 in `src/lib/components/`: forms and pages (`Button`, `Field`, `CardPage`,
-`Panel`, `Notice`, `InlineConfirm`, `Wordmark`, `Kbd`), catalog pieces
-(`Artwork`, `Badge`, `Facts`, `TitlePage`, `EpisodeRow`), tracking
+`Panel`, `Notice`, `InlineConfirm`, `Wordmark`, `Kbd`; action results go
+to `toast` from `#lib/toast.svelte.js`, which the layout's `Toaster`
+shows), catalog pieces
+(`Artwork`, `Badge`, `Facts`, `EpisodeRow`), title pages (`TitlePage`
+with its `RatingsBand`, `SectionNav`, and `ExternalLinks`, whose marks are
+`SourceMark`; the sections under the overview, `TitleSection` with
+`StatsSection`, `PeopleSection`, `VideosSection`, and
+`RecommendationsSection`, placeholders built from `PlaceholderFilter` and
+`PlaceholderRow`), tracking
 (`MarkButton` with its `WhenMenu`, whose options are `WhenChoices`;
+`PlaysButton`, the movie action column's watched state with its plays
+menu, and `PlaceholderActions` under it; `MenuPopover`, the popover menu
+shell the plays menu and `WatchedCheck` share;
 `PosterCard`, the poster, action bar, and caption card that `/history`
 uses and the watchlist and dashboard will reuse; `WatchedCheck`, the
 card's watched check with its tooltip and remove-or-add menu, built on

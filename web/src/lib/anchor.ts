@@ -31,7 +31,8 @@ export function placeNear(
 		align = 'start',
 		gap = 6,
 		margin = 8,
-		flip = true
+		flip = true,
+		insetTop = 0
 	}: {
 		prefer?: 'below' | 'above';
 		align?: 'start' | 'center';
@@ -39,11 +40,13 @@ export function placeNear(
 		margin?: number;
 		/** false keeps it on `prefer`, shifted to fit: for a popup that grows while open. */
 		flip?: boolean;
+		/** How much of the top is covered (the sticky header): it stays below that. */
+		insetTop?: number;
 	} = {}
 ): Placement {
 	const room = {
 		below: viewport.height - margin - (anchor.top + anchor.height + gap),
-		above: anchor.top - gap - margin
+		above: anchor.top - gap - margin - insetTop
 	};
 	const other = prefer === 'below' ? 'above' : 'below';
 	let side: 'below' | 'above' = prefer;
@@ -51,7 +54,7 @@ export function placeNear(
 		side = room[other] >= size.height || room[other] > room[prefer] ? other : prefer;
 	}
 	let top = side === 'below' ? anchor.top + anchor.height + gap : anchor.top - gap - size.height;
-	top = clamp(top, margin, viewport.height - margin - size.height);
+	top = clamp(top, insetTop + margin, viewport.height - margin - size.height);
 
 	let left = align === 'center' ? anchor.left + (anchor.width - size.width) / 2 : anchor.left;
 	left = clamp(left, margin, viewport.width - margin - size.width);
@@ -61,4 +64,29 @@ export function placeNear(
 /** Within [min, max]; min wins when the range is empty (too big to fit). */
 function clamp(n: number, min: number, max: number): number {
 	return Math.max(min, Math.min(n, max));
+}
+
+/**
+ * Whether the anchor has left the visible part of the window: scrolled
+ * up under the sticky header (`coveredTop`, its bottom edge), below the
+ * bottom, or off either side. A popup following it then closes, rather
+ * than being held at the window's edge over the header.
+ */
+export function outOfView(
+	anchor: Box,
+	viewport: { width: number; height: number },
+	coveredTop = 0
+): boolean {
+	return (
+		anchor.top + anchor.height <= coveredTop ||
+		anchor.top >= viewport.height ||
+		anchor.left + anchor.width <= 0 ||
+		anchor.left >= viewport.width
+	);
+}
+
+/** The bottom edge of the sticky app header (`data-app-header`), or 0 without one. */
+export function coveredTop(): number {
+	const header = document.querySelector('[data-app-header]');
+	return header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
 }
