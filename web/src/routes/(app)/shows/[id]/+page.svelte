@@ -1,29 +1,31 @@
 <script lang="ts">
-	import { markShow, showWatched } from '#lib/api/tracking.js';
+	import { markSeason, showWatched } from '#lib/api/tracking.js';
 	import type { EpisodeWatched, MarkWhen } from '#lib/api/types.js';
-	import Button from '#lib/components/Button.svelte';
 	import Facts from '#lib/components/Facts.svelte';
-	import MarkButton from '#lib/components/MarkButton.svelte';
-	import Notice from '#lib/components/Notice.svelte';
+	import PeopleSection from '#lib/components/PeopleSection.svelte';
+	import RecentEpisodesSection from '#lib/components/RecentEpisodesSection.svelte';
+	import RecommendationsSection from '#lib/components/RecommendationsSection.svelte';
+	import ShowActions from '#lib/components/ShowActions.svelte';
+	import StatsSection from '#lib/components/StatsSection.svelte';
 	import TitlePage from '#lib/components/TitlePage.svelte';
+	import VideosSection from '#lib/components/VideosSection.svelte';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
 	import { formatDay } from '#lib/format.js';
 	import { latestOnly } from '#lib/latest.js';
+	import { formatScore, languageName, seasonLabel, titleLinks, yearOf } from '#lib/media.js';
+	import { seasonList, seasonsLabel } from '#lib/seasons.js';
 	import { toast } from '#lib/toast.svelte.js';
-	import { formatScore, languageName, titleLinks, yearOf } from '#lib/media.js';
-	import { addedMessage, hasAired, watchedById } from '#lib/watched.js';
-	import Seasons from './Seasons.svelte';
+	import { addedMessage, hasAired } from '#lib/watched.js';
+	import SeasonGrid from './SeasonGrid.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 	const show = $derived(data.show);
 
 	// The user's watched episodes: from the load, then reloaded after a
-	// mark. Null while they can't be loaded: the page then hides the
-	// episode checks rather than show everything as unwatched.
+	// mark. Null while they can't be loaded: the page then shows no
+	// progress rather than everything as unwatched.
 	let watchedList = $derived(data.watched);
-	let watchedProblem = $derived(data.watchedError);
-	const watched = $derived(watchedList ? watchedById(watchedList) : null);
 
 	// Only the newest reload may set the list, so two quick marks can't
 	// leave an episode looking unwatched.
@@ -31,57 +33,41 @@
 
 	/** Reloads the watched episodes; throws if that fails. */
 	async function refreshWatched() {
-		const res = await track(showWatched(show.tmdb_id));
-		if (!res.current) return;
+		const id = show.tmdb_id;
+		const res = await track(showWatched(id));
+		// The page is reused across shows: drop a list for a show we've left.
+		if (!res.current || show.tmdb_id !== id) return;
 		watchedList = res.value;
-		watchedProblem = '';
-	}
-
-	let retrying = $state(false);
-	async function retryWatched() {
-		retrying = true;
-		try {
-			await refreshWatched();
-		} catch (e) {
-			watchedProblem = errorMessage(e);
-		} finally {
-			retrying = false;
-		}
 	}
 
 	const now = new Date();
-	// The server refuses a show mark until the episodes of every regular
-	// season it covers are stored (one season per number, lowest TMDB ID;
-	// specials aren't part of it). This checks every listed regular season,
-	// which can only be stricter.
-	const pending = $derived(show.seasons.some((s) => s.season_number > 0 && s.episodes_pending));
-	// Whether anything has aired, as far as the show's dates say, for the
-	// wording of a mark that added nothing.
-	const anyAired = $derived(
-		hasAired(show.first_air_date, now) ||
-			show.seasons.some((s) => s.season_number > 0 && hasAired(s.air_date, now))
-	);
 
-	// Results are toasts (DESIGN.md, Toasts): nothing added is info, not
-	// an error.
-	async function markWholeShow(when: MarkWhen) {
+	// A season card's mark: its aired episodes not watched yet. Results
+	// are toasts named for the season, since they float away from the card.
+	async function markOneSeason(n: number, when: MarkWhen) {
+		const season = seasonList(show.seasons).find((s) => s.season_number === n);
+		const name = season?.name || seasonLabel(n);
+		const aired = !!season && hasAired(season.air_date, now);
 		let added: number;
 		try {
-			added = await markShow(show.tmdb_id, when);
+			added = await markSeason(show.tmdb_id, n, when);
 		} catch (e) {
-			toast.error(errorMessage(e, trackingMessages));
+			toast.error(`${name}: ${errorMessage(e, trackingMessages)}`);
 			return;
 		}
-		toast.show(added > 0 ? 'success' : 'info', addedMessage(added, anyAired));
+		toast.show(added > 0 ? 'success' : 'info', `${name}: ${addedMessage(added, aired)}`);
 		try {
 			await refreshWatched();
 		} catch {
-			toast.error("The episode list is out of date. Reload the page to see what's watched.");
+			toast.error("Your progress here is out of date. Reload the page to see what's watched.");
 		}
 	}
 
-	const regular = $derived(show.seasons.filter((s) => s.season_number > 0));
-	const episodes = $derived(regular.reduce((n, s) => n + s.episode_count, 0));
+	const episodes = $derived(
+		seasonList(show.seasons)
+			.filter((s) => s.season_number > 0)
+			.reduce((n, s) => n + s.episode_count, 0)
+	);
 	const score = $derived(formatScore(show.vote_average, show.vote_count));
 
 	// TMDB's score only until M8 adds MDBList's sources (maintainer decision).
@@ -110,6 +96,16 @@
 		},
 		{ label: 'Language', value: languageName(show.original_language) }
 	]);
+
+	const sections = $derived([
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'recent', label: 'Recent episodes' },
+		{ id: 'people', label: 'People' },
+		{ id: 'seasons', label: seasonsLabel(show.seasons) },
+		{ id: 'stats', label: 'Stats' },
+		{ id: 'videos', label: 'Videos' },
+		{ id: 'recommendations', label: 'Recommendations' }
+	]);
 </script>
 
 <svelte:head>
@@ -123,39 +119,40 @@
 	backdropUrl={show.backdrop_url}
 	{ratings}
 	links={titleLinks('tv', show.tmdb_id, show.imdb_id)}
-	sections={[
-		{ id: 'overview', label: 'Overview' },
-		{ id: 'seasons', label: 'Seasons', count: show.seasons.length }
-	]}
+	{sections}
 >
 	{#snippet facts()}
 		<Facts facts={factsList} />
 	{/snippet}
 
 	{#snippet actions()}
-		<div class="flex flex-col">
-			<MarkButton
-				label="Mark show watched"
-				menuLabel="Choose when you watched {show.name}"
-				onmark={markWholeShow}
-				release={{ label: 'Air dates', detail: "Each episode's own", enabled: true }}
-				disabledReason={pending
-					? 'Some episodes are still being fetched from TMDB. Reload the page in a moment.'
-					: ''}
+		<ShowActions
+			{show}
+			watched={watchedList}
+			watchedError={data.watchedError}
+			refresh={refreshWatched}
+		/>
+	{/snippet}
+
+	{#snippet below()}
+		<RecentEpisodesSection />
+		<PeopleSection />
+		<!-- Keyed by show, so a season mark still running can't spin or take focus on another show's grid. -->
+		{#key show.tmdb_id}
+			<SeasonGrid
+				{show}
+				watched={watchedList}
+				{now}
+				onmark={markOneSeason}
+				onrefresh={refreshWatched}
 			/>
-			<p class="mt-2 text-xs text-muted">
-				Adds every aired episode you haven't watched yet, except specials.
-			</p>
-			{#if watched === null}
-				<div class="mt-3 flex flex-col items-start gap-2">
-					<Notice
-						tone="error"
-						message="Couldn't load which episodes you've watched: {watchedProblem}"
-					/>
-					<Button variant="quiet" busy={retrying} onclick={retryWatched}>Try again</Button>
-				</div>
-			{/if}
-		</div>
+		{/key}
+		<StatsSection tmdb={{ average: show.vote_average, votes: show.vote_count }} />
+		<VideosSection />
+	{/snippet}
+
+	{#snippet last()}
+		<RecommendationsSection title={show.name} />
 	{/snippet}
 
 	<div class="mt-6 max-w-[72ch]">
@@ -166,6 +163,4 @@
 			{show.overview || 'TMDB has no overview for this show yet.'}
 		</p>
 	</div>
-
-	<Seasons {show} {watched} {refreshWatched} />
 </TitlePage>
