@@ -1,13 +1,16 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { markMovie, movieWatches, removeMovieWatches } from '#lib/api/tracking.js';
 	import Facts from '#lib/components/Facts.svelte';
 	import PeopleSection from '#lib/components/PeopleSection.svelte';
+	import PlaysActions from '#lib/components/PlaysActions.svelte';
 	import RecommendationsSection from '#lib/components/RecommendationsSection.svelte';
 	import StatsSection from '#lib/components/StatsSection.svelte';
 	import TitlePage from '#lib/components/TitlePage.svelte';
 	import VideosSection from '#lib/components/VideosSection.svelte';
 	import { formatDay } from '#lib/format.js';
 	import { formatRuntime, formatScore, languageName, titleLinks, yearOf } from '#lib/media.js';
-	import MovieActions from './MovieActions.svelte';
+	import { releaseOption } from '#lib/when.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -67,7 +70,19 @@
 			one movie, so a slow reload for the last one can't land here.
 		-->
 		{#key movie.tmdb_id}
-			<MovieActions {movie} watches={data.watches} watchesError={data.watchesError} />
+			<!-- The id it was made for, not whichever movie is open when a closure runs. -->
+			{@const id = untrack(() => movie.tmdb_id)}
+			<PlaysActions
+				title={movie.title}
+				kind="movie"
+				idBase="movie"
+				release={releaseOption('Release date', movie.release_date, new Date())}
+				watches={data.watches}
+				watchesError={data.watchesError}
+				load={() => movieWatches(id)}
+				mark={(when) => markMovie(id, when)}
+				removeAll={() => removeMovieWatches(id)}
+			/>
 		{/key}
 	{/snippet}
 
@@ -75,6 +90,9 @@
 		<StatsSection tmdb={{ average: movie.vote_average, votes: movie.vote_count }} />
 		<PeopleSection />
 		<VideosSection />
+	{/snippet}
+
+	{#snippet last()}
 		<RecommendationsSection title={movie.title} />
 	{/snippet}
 
