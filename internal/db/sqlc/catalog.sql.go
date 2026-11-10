@@ -337,6 +337,84 @@ func (q *Queries) ListSeasonEpisodes(ctx context.Context, seasonID int64) ([]Lis
 	return items, nil
 }
 
+const listShowEpisodes = `-- name: ListShowEpisodes :many
+SELECT
+    seasons.id AS season_id, seasons.episodes_updated_at,
+    episodes.tmdb_id, episodes.season_number, episodes.episode_number,
+    episodes.name, episodes.overview, episodes.still_path, episodes.air_date,
+    episodes.runtime, episodes.vote_average, episodes.imdb_id, episodes.tvdb_id
+FROM shows
+LEFT JOIN seasons ON seasons.show_id = shows.id
+    AND seasons.missing_since IS NULL AND seasons.not_found_since IS NULL
+    AND seasons.tmdb_id = (
+        SELECT MIN(sibling.tmdb_id) FROM seasons AS sibling
+        WHERE sibling.show_id = shows.id AND sibling.season_number = seasons.season_number
+            AND sibling.missing_since IS NULL AND sibling.not_found_since IS NULL)
+LEFT JOIN episodes ON episodes.season_id = seasons.id AND episodes.missing_since IS NULL
+WHERE shows.tmdb_id = ?1
+ORDER BY seasons.season_number, episodes.episode_number, episodes.tmdb_id
+`
+
+type ListShowEpisodesRow struct {
+	SeasonID          sql.NullInt64
+	EpisodesUpdatedAt sql.NullString
+	TmdbID            sql.NullInt64
+	SeasonNumber      sql.NullInt64
+	EpisodeNumber     sql.NullInt64
+	Name              sql.NullString
+	Overview          sql.NullString
+	StillPath         sql.NullString
+	AirDate           sql.NullString
+	Runtime           sql.NullInt64
+	VoteAverage       sql.NullFloat64
+	ImdbID            sql.NullString
+	TvdbID            sql.NullInt64
+}
+
+// ListShowEpisodes returns the episodes of a show's visible seasons, the ones
+// GetVisibleSeason picks, by season number, then episode number. The show is
+// the outer table, so a show that isn't stored has no rows. Otherwise each
+// visible season gives one row per episode, or one row with NULL episode
+// columns when it has none stored. A show with no visible season gives one
+// row with NULL season columns. episodes_updated_at is NULL while a visible
+// season is pending.
+func (q *Queries) ListShowEpisodes(ctx context.Context, showTmdbID int64) ([]ListShowEpisodesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listShowEpisodes, showTmdbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListShowEpisodesRow{}
+	for rows.Next() {
+		var i ListShowEpisodesRow
+		if err := rows.Scan(
+			&i.SeasonID,
+			&i.EpisodesUpdatedAt,
+			&i.TmdbID,
+			&i.SeasonNumber,
+			&i.EpisodeNumber,
+			&i.Name,
+			&i.Overview,
+			&i.StillPath,
+			&i.AirDate,
+			&i.Runtime,
+			&i.VoteAverage,
+			&i.ImdbID,
+			&i.TvdbID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listShowGenres = `-- name: ListShowGenres :many
 SELECT genres.tmdb_id, genres.name
 FROM show_genres

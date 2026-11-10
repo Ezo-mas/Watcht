@@ -255,3 +255,46 @@ func (s *Service) Season(ctx context.Context, showTMDBID, seasonNumber int) (Sea
 	}
 	return season, episodes, nil
 }
+
+// ShowEpisodes returns the episodes of a show's visible seasons, the ones
+// Season picks, by season number, then episode number. Specials are included.
+// pending is true while a visible season's episodes aren't stored yet, and
+// then episodes is nil. Otherwise episodes is an empty slice when none are
+// stored. It returns ErrNotFound if the show isn't stored.
+func (s *Service) ShowEpisodes(ctx context.Context, showTMDBID int) ([]Episode, bool, error) {
+	rows, err := s.read.ListShowEpisodes(ctx, int64(showTMDBID))
+	if err != nil {
+		return nil, false, fmt.Errorf("read episodes of show %d: %w", showTMDBID, err)
+	}
+	if len(rows) == 0 {
+		return nil, false, ErrNotFound
+	}
+	episodes := make([]Episode, 0, len(rows))
+	for _, r := range rows {
+		if !r.SeasonID.Valid {
+			// The show has no visible season, so it has no episodes either.
+			continue
+		}
+		if !r.EpisodesUpdatedAt.Valid {
+			return nil, true, nil
+		}
+		if !r.TmdbID.Valid {
+			// The visible season has no episodes stored.
+			continue
+		}
+		episodes = append(episodes, Episode{
+			TMDBID:        int(r.TmdbID.Int64),
+			SeasonNumber:  int(r.SeasonNumber.Int64),
+			EpisodeNumber: int(r.EpisodeNumber.Int64),
+			Name:          r.Name.String,
+			Overview:      r.Overview.String,
+			StillPath:     r.StillPath.String,
+			AirDate:       r.AirDate.String,
+			Runtime:       int(r.Runtime.Int64),
+			VoteAverage:   r.VoteAverage.Float64,
+			IMDbID:        r.ImdbID.String,
+			TVDBID:        int(r.TvdbID.Int64),
+		})
+	}
+	return episodes, false, nil
+}

@@ -24,6 +24,7 @@ type Catalog interface {
 	Movie(context.Context, int) (catalog.Movie, error)
 	Show(context.Context, int) (catalog.Show, error)
 	Season(context.Context, int, int) (catalog.Season, []catalog.Episode, error)
+	ShowEpisodes(context.Context, int) ([]catalog.Episode, bool, error)
 	FetchMovie(context.Context, int) error
 	FetchShow(context.Context, int) error
 	MarkMovieViewed(context.Context, int) error
@@ -41,6 +42,7 @@ func (h *catalogHandlers) register(api *apiMux) {
 	api.handle("GET /api/v1/movies/{id}", h.auth.withUser(h.movie))
 	api.handle("GET /api/v1/shows/{id}", h.auth.withUser(h.show))
 	api.handle("GET /api/v1/shows/{id}/seasons/{number}", h.auth.withUser(h.season))
+	api.handle("GET /api/v1/shows/{id}/episodes", h.auth.withUser(h.showEpisodes))
 }
 
 func (h *catalogHandlers) configured(w http.ResponseWriter) bool {
@@ -196,6 +198,36 @@ func (h *catalogHandlers) season(w http.ResponseWriter, r *http.Request, _ auth.
 		ShowTMDBID:      id,
 		Season:          seasonResponse(season),
 		EpisodesPending: season.EpisodesPending,
+		Episodes:        result,
+	})
+}
+
+func (h *catalogHandlers) showEpisodes(w http.ResponseWriter, r *http.Request, _ auth.User) {
+	if !h.configured(w) {
+		return
+	}
+	id, ok := catalogPathNumber(w, r, "id", 1)
+	if !ok {
+		return
+	}
+	episodes, pending, err := h.catalog.ShowEpisodes(r.Context(), id)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if err := h.catalog.MarkShowViewed(r.Context(), id); err != nil && r.Context().Err() == nil {
+		h.auth.logger.Warn("mark show viewed", "err", err)
+	}
+	var result []episodeJSON
+	if !pending {
+		result = make([]episodeJSON, 0, len(episodes))
+		for _, e := range episodes {
+			result = append(result, episodeResponse(e))
+		}
+	}
+	writeJSON(w, http.StatusOK, showEpisodesJSON{
+		ShowTMDBID:      id,
+		EpisodesPending: pending,
 		Episodes:        result,
 	})
 }
@@ -385,6 +417,7 @@ type episodeJSON struct {
 	Overview      string  `json:"overview"`
 	StillPath     string  `json:"still_path"`
 	StillURL      string  `json:"still_url"`
+	StillLargeURL string  `json:"still_large_url"`
 	AirDate       string  `json:"air_date"`
 	Runtime       int     `json:"runtime"`
 	VoteAverage   float64 `json:"vote_average"`
@@ -399,6 +432,7 @@ func episodeResponse(v catalog.Episode) episodeJSON {
 		Overview:      v.Overview,
 		StillPath:     v.StillPath,
 		StillURL:      tmdbImage("w300", v.StillPath),
+		StillLargeURL: tmdbImage("original", v.StillPath),
 		AirDate:       v.AirDate,
 		Runtime:       v.Runtime,
 		VoteAverage:   v.VoteAverage,
@@ -427,4 +461,9 @@ type seasonJSON struct {
 	Season          seasonJSONItem `json:"season"`
 	EpisodesPending bool           `json:"episodes_pending"`
 	Episodes        []episodeJSON  `json:"episodes"`
+}
+type showEpisodesJSON struct {
+	ShowTMDBID      int           `json:"show_tmdb_id"`
+	EpisodesPending bool          `json:"episodes_pending"`
+	Episodes        []episodeJSON `json:"episodes"`
 }

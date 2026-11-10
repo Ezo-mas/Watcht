@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Ezo-mas/watcht/internal/catalog"
 )
 
 func assertCatalogMovieFixture(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -153,14 +155,7 @@ func TestCatalogSeasonFields(t *testing.T) {
 			wantSeason["episode_count"] = summary["episode_count"]
 		}
 	}
-	episodes := make([]map[string]any, 0)
-	for _, value := range fixture["episodes"].([]any) {
-		episode := value.(map[string]any)
-		want := catalogFixtureFields(episode, "season_number episode_number name overview still_path air_date runtime vote_average")
-		want["tmdb_id"] = episode["id"]
-		want["still_url"] = fixtureImageURL("w300", episode["still_path"])
-		episodes = append(episodes, want)
-	}
+	episodes := catalogEpisodeFields(t, "tv_1396_season_1.json")
 	if len(episodes) < 2 {
 		t.Fatal("fixture must cover at least two episodes")
 	}
@@ -170,6 +165,48 @@ func TestCatalogSeasonFields(t *testing.T) {
 		"episodes_pending": false,
 		"episodes":         episodes,
 	})
+}
+
+// catalogEpisodeFields is the JSON the API should return for each episode of a
+// season fixture, in the fixture's order.
+func catalogEpisodeFields(t *testing.T, name string) []map[string]any {
+	t.Helper()
+	fixture := catalogFieldsFixture(t, name)
+	episodes := make([]map[string]any, 0)
+	for _, value := range fixture["episodes"].([]any) {
+		episode := value.(map[string]any)
+		want := catalogFixtureFields(episode, "season_number episode_number name overview still_path air_date runtime vote_average")
+		// TMDB sends null for an episode with no air date. The API sends "" for
+		// any unknown string, as it does for the stored NULL.
+		if want["air_date"] == nil {
+			want["air_date"] = ""
+		}
+		want["tmdb_id"] = episode["id"]
+		want["still_url"] = fixtureImageURL("w300", episode["still_path"])
+		want["still_large_url"] = fixtureImageURL("original", episode["still_path"])
+		episodes = append(episodes, want)
+	}
+	return episodes
+}
+
+// TestEpisodeStillURLs checks both still sizes. Each is "" when the episode has
+// no still, and the key is present either way.
+func TestEpisodeStillURLs(t *testing.T) {
+	got := episodeResponse(catalog.Episode{StillPath: "/abc.jpg"})
+	if got.StillURL != "https://image.tmdb.org/t/p/w300/abc.jpg" || got.StillLargeURL != "https://image.tmdb.org/t/p/original/abc.jpg" {
+		t.Fatalf("still URLs = %q, %q", got.StillURL, got.StillLargeURL)
+	}
+	none := episodeResponse(catalog.Episode{})
+	if none.StillURL != "" || none.StillLargeURL != "" {
+		t.Fatalf("still URLs without a path = %q, %q; want both empty", none.StillURL, none.StillLargeURL)
+	}
+	data, err := json.Marshal(none)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"still_large_url":""`) {
+		t.Fatalf("episode JSON = %s; want still_large_url present and empty", data)
+	}
 }
 
 func TestCatalogSearchFields(t *testing.T) {
