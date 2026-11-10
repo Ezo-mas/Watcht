@@ -1,7 +1,5 @@
-import type { Season } from './api/types';
-
 // Small helpers for showing catalog data: years, runtimes, episode codes,
-// languages, and which season a show page opens on.
+// languages, and links to other sites.
 
 /** The year of a TMDB date ("2008-01-20" → "2008"), or "" when there's none. */
 export function yearOf(date: string): string {
@@ -56,23 +54,9 @@ export function seasonLabel(number: number): string {
 }
 
 /**
- * The season a show page opens on: the first regular season (1 or more),
- * or specials when that's all there is; null for a show with no seasons.
- */
-export function defaultSeason(seasons: Pick<Season, 'season_number'>[]): number | null {
-	let first: number | null = null;
-	for (const s of seasons) {
-		if (s.season_number >= 1 && (first === null || s.season_number < first)) {
-			first = s.season_number;
-		}
-	}
-	if (first !== null) return first;
-	return seasons.some((s) => s.season_number === 0) ? 0 : null;
-}
-
-/**
- * Reads ?season=N: a whole number 0 or more, or null for anything else
- * (missing, "abc", "-1", "1.5").
+ * Reads a season or episode number (?season=N, or the number in a season
+ * or episode page's address): a whole number 0 or more, or null for
+ * anything else (missing, "abc", "-1", "1.5").
  */
 export function parseSeasonParam(value: string | null): number | null {
 	if (value === null || !/^\d{1,4}$/.test(value)) return null;
@@ -109,4 +93,15 @@ export function titleLinks(kind: 'movie' | 'tv', tmdbId: number, imdbId: string)
 	}
 	links.push({ site: 'tmdb', label: 'TMDB', href: `https://www.themoviedb.org/${kind}/${tmdbId}` });
 	return links;
+}
+
+/**
+ * A season's or an episode's page on TMDB, as the icon link under its
+ * poster. IMDb has no page for a season, and the API carries no IMDb ID
+ * for an episode, so TMDB only.
+ */
+export function tvPartLinks(showId: number, season: number, episode?: number): TitleLink[] {
+	let href = `https://www.themoviedb.org/tv/${showId}/season/${season}`;
+	if (episode !== undefined) href += `/episode/${episode}`;
+	return [{ site: 'tmdb', label: 'TMDB', href }];
 }

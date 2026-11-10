@@ -4,15 +4,16 @@
 	import { coveredTop, outOfView, placeNear } from '#lib/anchor.js';
 	import { formatWatchDay } from '#lib/format.js';
 	import { formatRuntime } from '#lib/media.js';
+	import { stripSquare } from '#lib/strip.js';
 	import type { ReleaseOption } from '#lib/when.js';
 	import MenuPopover, {
 		keepIt,
 		menuIcon,
 		menuItem,
-		removeAllPlaceholder,
 		spinner,
 		trashIcon
 	} from './MenuPopover.svelte';
+	import RemoveAllPlays from './RemoveAllPlays.svelte';
 	import WhenChoices from './WhenChoices.svelte';
 
 	interface Props {
@@ -35,14 +36,26 @@
 		 * the list and moves focus), or the message to show in the menu.
 		 */
 		onremove: () => Promise<string>;
+		onremoveall: () => Promise<string>;
 		/** Marks it watched again; resolves like onremove. The menu closes on success. */
 		onadd: (when: MarkWhen) => Promise<string>;
 	}
 
-	let { name, watchedAt, watchedOn, runtime, release, buttonId, zoneNote, onremove, onadd }: Props =
-		$props();
+	let {
+		name,
+		watchedAt,
+		watchedOn,
+		runtime,
+		release,
+		buttonId,
+		zoneNote,
+		onremove,
+		onremoveall,
+		onadd
+	}: Props = $props();
 
-	// A watched check on a poster card's bar: a sage square with a check.
+	// A watched check on a poster card's bar: a sage square with a check,
+	// flush in the bar's bottom-left corner.
 	// Hover or keyboard focus shows a tooltip with when it was watched; a
 	// click opens a small dialog: remove this play, keep it, or add another.
 	// Both popups use the Popover API, so they sit in the top layer: the
@@ -60,6 +73,7 @@
 	let tipOpen = $state(false);
 	let adding = $state(false);
 	let busy = $state<'remove' | 'add' | null>(null);
+	let removeAllBusy = $state(false);
 	let error = $state('');
 
 	const date = $derived(formatWatchDay({ watched_at: watchedAt, watched_on: watchedOn }));
@@ -151,7 +165,7 @@
 	}
 
 	async function removeOne() {
-		if (busy) return;
+		if (busy || removeAllBusy) return;
 		busy = 'remove';
 		error = '';
 		const problem = await onremove();
@@ -161,6 +175,7 @@
 	}
 
 	async function toggleAdding() {
+		if (busy || removeAllBusy) return;
 		adding = !adding;
 		if (!adding) return;
 		await tick();
@@ -168,7 +183,7 @@
 	}
 
 	async function add(when: MarkWhen) {
-		if (busy) return;
+		if (busy || removeAllBusy) return;
 		busy = 'add';
 		error = '';
 		const problem = await onadd(when);
@@ -205,7 +220,10 @@
 	{onfocus}
 	onblur={hideTip}
 	onkeydown={onTriggerKeydown}
-	class="grid size-10 shrink-0 place-items-center rounded-sm bg-watched text-surface transition-colors hover:bg-watched-hover focus-visible:bg-watched-hover focus-visible:outline-on-screen-accent aria-expanded:bg-watched-hover sm:size-8"
+	class={[
+		stripSquare,
+		'rounded-bl-sm bg-watched text-surface transition-colors hover:bg-watched-hover focus-visible:bg-watched-hover aria-expanded:bg-watched-hover'
+	]}
 >
 	<svg
 		aria-hidden="true"
@@ -265,7 +283,14 @@
 			{#if busy === 'remove'}{@render spinner()}{:else}{@render trashIcon()}{/if}
 			Only this play
 		</button>
-		{@render removeAllPlaceholder(`${uid}-all`)}
+		<RemoveAllPlays
+			title={name}
+			onremove={onremoveall}
+			disabled={!!busy}
+			bind:busy={removeAllBusy}
+			open={menuOpen}
+			ondone={close}
+		/>
 		{@render keepIt(close)}
 	</div>
 

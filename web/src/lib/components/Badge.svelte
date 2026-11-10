@@ -5,9 +5,11 @@
 	interface Props {
 		/**
 		 * accent: the one thing to see first (a result's type, an air date);
-		 * quiet: secondary facts (runtime, score); outline: not yet (unaired).
+		 * quiet: secondary facts (runtime, score); outline: not yet (unaired);
+		 * strong: an episode that opens or closes a season or the series
+		 * (inverted: ink with canvas text).
 		 */
-		tone?: 'accent' | 'quiet' | 'outline';
+		tone?: 'accent' | 'quiet' | 'outline' | 'strong';
 		title?: string;
 		class?: ClassValue;
 		children: Snippet;
@@ -23,6 +25,7 @@
 		tone === 'accent' && 'bg-accent text-on-accent',
 		tone === 'quiet' && 'bg-raised text-muted',
 		tone === 'outline' && 'border border-line-strong text-muted',
+		tone === 'strong' && 'bg-ink text-canvas',
 		className
 	]}>{@render children()}</span
 >

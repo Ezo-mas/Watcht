@@ -8,7 +8,7 @@
 	/** A row's leading icon. */
 	export const menuIcon = 'size-4 shrink-0';
 
-	export { trashIcon, removeAllPlaceholder, keepIt, spinner };
+	export { trashIcon, keepIt, spinner };
 </script>
 
 <script lang="ts">
@@ -238,29 +238,6 @@
 		aria-hidden="true"
 		class="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
 	></span>
-{/snippet}
-
-<!--
-	Removing every play of a title needs a new endpoint (later); until then
-	the row says so (DESIGN.md, Placeholders). `describedId` names its
-	"coming later" line.
--->
-{#snippet removeAllPlaceholder(describedId: string)}
-	<button
-		type="button"
-		data-item
-		aria-disabled="true"
-		aria-label="Remove all plays"
-		aria-describedby={describedId}
-		title="Coming in a later update"
-		class={[menuItem, 'cursor-not-allowed text-muted']}
-	>
-		{@render trashIcon()}
-		<span>
-			Remove all plays
-			<span id={describedId} class="block text-xs">Coming in a later update</span>
-		</span>
-	</button>
 {/snippet}
 
 {#snippet keepIt(onclick: () => void)}

@@ -44,6 +44,16 @@ describe('catalogLoadError', () => {
 		);
 		expect(err).toMatchObject({ status: 404, body: { message: 'TMDB has no movie with ID 9.' } });
 	});
+
+	it('says what kind of thing is missing, for the error page', () => {
+		const err = thrown(() =>
+			catalogLoadError(new ApiError(404, 'not_found', 'x'), 'TMDB has no show with ID 9.', 'show')
+		);
+		expect(err).toMatchObject({
+			status: 404,
+			body: { message: 'TMDB has no show with ID 9.', missing: 'show' }
+		});
+	});
 });
 
 describe('optionalLoad', () => {

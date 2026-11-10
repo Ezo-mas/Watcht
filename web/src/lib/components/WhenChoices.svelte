@@ -10,9 +10,10 @@
 		release: ReleaseOption;
 		/** While a mark runs, the options are off. */
 		busy?: boolean;
+		nowLabel?: string;
 	}
 
-	let { onchoose, release, busy = false }: Props = $props();
+	let { onchoose, release, busy = false, nowLabel = 'Just now' }: Props = $props();
 
 	// The "when" choice itself, shared by WhenMenu (the mark buttons) and
 	// the history card's menu: just now, the release or air date, and
@@ -81,7 +82,7 @@
 		aria-disabled={busy || undefined}
 		onclick={() => choose({ at: 'now' })}
 	>
-		Just now
+		{nowLabel}
 	</button>
 	<button
 		type="button"

@@ -17,9 +17,13 @@ export function loadError(e: unknown, messages: Partial<Record<string, string>> 
 	throw e;
 }
 
-/** loadError for the catalog: 404 says what's missing (`notFound`). */
-export function catalogLoadError(e: unknown, notFound: string): never {
-	if (e instanceof ApiError && e.status === 404) error(404, notFound);
+/** loadError for the catalog: 404 says what's missing (`notFound`, and `missing` for the error page). */
+export function catalogLoadError(
+	e: unknown,
+	notFound: string,
+	missing?: App.Error['missing']
+): never {
+	if (e instanceof ApiError && e.status === 404) error(404, notFound, { missing });
 	loadError(e, catalogMessages);
 }
 
