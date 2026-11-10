@@ -103,8 +103,13 @@ func TestTrackingSuccessShapes(t *testing.T) {
 	episode := s.mark("/episodes/62085/watches", `{"release_date":true}`)
 	eid := episode["watch"].(map[string]any)["id"]
 	trackingEqual(t, episode, fmt.Sprintf(`{"watch":{"id":%v,"watched_at":"2008-01-20T12:00:00Z","watched_on":"2008-01-20","source":"manual"},"merged_into":null}`, eid))
+	// Merged into the release watch, so not listed.
+	if merged := s.mark("/episodes/62085/watches", `{"watched_at":"2008-01-20T12:00:00Z"}`); merged["merged_into"] != eid {
+		t.Fatalf("merged: %v", merged)
+	}
 	trackingEqual(t, trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":"2020-01-02T00:00:00Z","watched_on":null,"source":"manual"}]}`, id))
-	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"plays":1,"last_watched_at":"2008-01-20T12:00:00Z","last_watched_on":"2008-01-20"}]}`)
+	trackingEqual(t, trackingObject(t, s.call("GET", "/episodes/62085/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":"2008-01-20T12:00:00Z","watched_on":"2008-01-20","source":"manual"}]}`, eid))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"season_number":1,"plays":1,"last_watched_at":"2008-01-20T12:00:00Z","last_watched_on":"2008-01-20"}]}`)
 	history := trackingObject(t, s.call("GET", "/history", ""), 200)
 	trackingEqual(t, history, fmt.Sprintf(`{"entries":[{"id":%v,"watched_at":"2020-01-02T00:00:00Z","watched_on":null,"source":"manual","movie":{"tmdb_id":603,"title":"Movie","poster_path":"/movie.jpg","poster_url":"https://image.tmdb.org/t/p/w342/movie.jpg","release_date":"1999-03-30","runtime":0,"vote_average":0},"episode":null},{"id":%v,"watched_at":"2008-01-20T12:00:00Z","watched_on":"2008-01-20","source":"manual","movie":null,"episode":{"tmdb_id":62085,"season_number":1,"episode_number":1,"name":"Episode","still_path":"/still.jpg","still_url":"https://image.tmdb.org/t/p/w300/still.jpg","air_date":"2008-01-20","runtime":0,"vote_average":0,"show":{"tmdb_id":1396,"name":"Show","poster_path":"/show.jpg","poster_url":"https://image.tmdb.org/t/p/w342/show.jpg"}}}],"next_cursor":null}`, id, eid))
 	s.mark("/movies/603/watches", `{"watched_at":"2021-01-01T00:00:00Z"}`)
@@ -113,7 +118,11 @@ func TestTrackingSuccessShapes(t *testing.T) {
 		t.Fatal(watches)
 	}
 	s.mark("/episodes/62085/watches", `{"watched_at":"2021-01-01T00:00:00Z"}`)
-	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"plays":2,"last_watched_at":"2021-01-01T00:00:00Z","last_watched_on":null}]}`)
+	episodeWatches := trackingObject(t, s.call("GET", "/episodes/62085/watches", ""), 200)["watches"].([]any)
+	if len(episodeWatches) != 2 || episodeWatches[0].(map[string]any)["watched_at"] != "2021-01-01T00:00:00Z" {
+		t.Fatal(episodeWatches)
+	}
+	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), `{"episodes":[{"tmdb_id":62085,"season_number":1,"plays":2,"last_watched_at":"2021-01-01T00:00:00Z","last_watched_on":null}]}`)
 }
 
 func TestTrackingBatchShapes(t *testing.T) {
@@ -180,7 +189,7 @@ func TestTrackingMissingAndInvalidPaths(t *testing.T) {
 		catalogError(t, s.call("POST", path, ""), 404, "not_found")
 	}
 	for _, id := range []string{"abc", "0", "-1", "+1", "2147483648", "999999999999999999999"} {
-		for _, route := range []struct{ method, path string }{{"POST", "/movies/%s/watches"}, {"POST", "/episodes/%s/watches"}, {"POST", "/shows/%s/watches"}, {"POST", "/shows/%s/seasons/1/watches"}, {"GET", "/movies/%s/watches"}, {"GET", "/shows/%s/watched"}} {
+		for _, route := range []struct{ method, path string }{{"POST", "/movies/%s/watches"}, {"POST", "/episodes/%s/watches"}, {"POST", "/shows/%s/watches"}, {"POST", "/shows/%s/seasons/1/watches"}, {"GET", "/movies/%s/watches"}, {"GET", "/episodes/%s/watches"}, {"GET", "/shows/%s/watched"}, {"DELETE", "/movies/%s/watches"}, {"DELETE", "/episodes/%s/watches"}, {"DELETE", "/shows/%s/watches"}, {"DELETE", "/shows/%s/seasons/1/watches"}} {
 			catalogError(t, s.call(route.method, fmt.Sprintf(route.path, id), ""), 404, "not_found")
 		}
 	}
@@ -190,7 +199,7 @@ func TestTrackingMissingAndInvalidPaths(t *testing.T) {
 	for _, id := range []string{"abc", "0", "-1", "+1", "9223372036854775808", "2147483648"} {
 		catalogError(t, s.call("DELETE", "/watches/"+id, ""), 404, "not_found")
 	}
-	for _, path := range []string{"/movies/603/watches", "/movies/999/watches"} {
+	for _, path := range []string{"/movies/603/watches", "/movies/999/watches", "/episodes/62085/watches", "/episodes/999/watches"} {
 		trackingEqual(t, trackingObject(t, s.call("GET", path, ""), 200), `{"watches":[]}`)
 	}
 	for _, path := range []string{"/shows/1396/watched", "/shows/999/watched"} {
@@ -202,14 +211,15 @@ func TestTrackingMissingAndInvalidPaths(t *testing.T) {
 func TestTrackingIsolationAndDelete(t *testing.T) {
 	s := newTrackingServer(t)
 	first := s.mark("/movies/603/watches", "")
-	s.mark("/episodes/62085/watches", "")
+	episode := s.mark("/episodes/62085/watches", "")
 	id := first["watch"].(map[string]any)["id"]
+	eid := episode["watch"].(map[string]any)["id"]
 	path := fmt.Sprintf("/watches/%.0f", id)
 	admin := s.cookie
 	s.createAccount(admin, "member", "long enough", false)
 	s.cookie = s.login("member", "long enough")
 	catalogError(t, s.call("DELETE", path, ""), 404, "not_found")
-	for path, want := range map[string]string{"/history": `{"entries":[],"next_cursor":null}`, "/movies/603/watches": `{"watches":[]}`, "/shows/1396/watched": `{"episodes":[]}`} {
+	for path, want := range map[string]string{"/history": `{"entries":[],"next_cursor":null}`, "/movies/603/watches": `{"watches":[]}`, "/episodes/62085/watches": `{"watches":[]}`, "/shows/1396/watched": `{"episodes":[]}`} {
 		trackingEqual(t, trackingObject(t, s.call("GET", path, ""), 200), want)
 	}
 	s.mark("/movies/603/watches", "")
@@ -220,7 +230,8 @@ func TestTrackingIsolationAndDelete(t *testing.T) {
 		t.Fatal(history)
 	}
 	trackingEqual(t, trackingObject(t, s.call("GET", "/movies/603/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":%q,"watched_on":null,"source":"manual"}]}`, id, s.clock.Now().Format(time.RFC3339)))
-	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), fmt.Sprintf(`{"episodes":[{"tmdb_id":62085,"plays":1,"last_watched_at":%q,"last_watched_on":null}]}`, s.clock.Now().Format(time.RFC3339)))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/episodes/62085/watches", ""), 200), fmt.Sprintf(`{"watches":[{"id":%v,"watched_at":%q,"watched_on":null,"source":"manual"}]}`, eid, s.clock.Now().Format(time.RFC3339)))
+	trackingEqual(t, trackingObject(t, s.call("GET", "/shows/1396/watched", ""), 200), fmt.Sprintf(`{"episodes":[{"tmdb_id":62085,"season_number":1,"plays":1,"last_watched_at":%q,"last_watched_on":null}]}`, s.clock.Now().Format(time.RFC3339)))
 	rec := s.call("DELETE", path, "")
 	if rec.Code != 204 || rec.Body.Len() != 0 {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
@@ -319,7 +330,7 @@ func TestTrackingAuthentication(t *testing.T) {
 	routes := []struct {
 		method, path string
 		status       int
-	}{{"POST", "/movies/603/watches", 201}, {"POST", "/episodes/62085/watches", 201}, {"POST", "/shows/1396/seasons/1/watches", 200}, {"POST", "/shows/1396/watches", 200}, {"DELETE", "/watches/1", 204}, {"GET", "/movies/603/watches", 200}, {"GET", "/shows/1396/watched", 200}, {"GET", "/history", 200}}
+	}{{"POST", "/movies/603/watches", 201}, {"POST", "/episodes/62085/watches", 201}, {"POST", "/shows/1396/seasons/1/watches", 200}, {"POST", "/shows/1396/watches", 200}, {"DELETE", "/watches/1", 204}, {"GET", "/movies/603/watches", 200}, {"GET", "/episodes/62085/watches", 200}, {"GET", "/shows/1396/watched", 200}, {"GET", "/history", 200}, {"DELETE", "/movies/603/watches", 200}, {"DELETE", "/episodes/62085/watches", 200}, {"DELETE", "/shows/1396/seasons/1/watches", 200}, {"DELETE", "/shows/1396/watches", 200}}
 	token := trackingObject(t, s.do(request{method: "POST", path: "/api/v1/tokens", body: `{"name":"tracking","password":"long enough"}`, cookie: s.cookie}), 201)["secret"].(string)
 	for _, route := range routes {
 		catalogError(t, s.do(request{method: route.method, path: "/api/v1" + route.path}), 401, "unauthenticated")
@@ -377,4 +388,36 @@ func TestTrackingEpisodesPending(t *testing.T) {
 	catalogError(t, s.call("POST", "/shows/1396/watches", ""), 409, "episodes_pending")
 	catalogError(t, s.call("POST", "/shows/1396/seasons/2/watches", ""), 409, "episodes_pending")
 	trackingEqual(t, trackingObject(t, s.call("POST", "/shows/1396/seasons/1/watches", ""), 200), `{"added":1}`)
+}
+
+func TestTrackingRemoveAll(t *testing.T) {
+	for _, tc := range []struct {
+		path, markPath, missing string
+	}{
+		{"/movies/603/watches", "/movies/603/watches", "/movies/99999/watches"},
+		{"/episodes/62085/watches", "/episodes/62085/watches", "/episodes/99999/watches"},
+		{"/shows/1396/seasons/1/watches", "/episodes/62085/watches", "/shows/1396/seasons/9/watches"},
+		{"/shows/1396/watches", "/episodes/62085/watches", "/shows/99999/watches"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			s := newTrackingServer(t)
+			s.mark(tc.markPath, "")
+			s.mark(tc.markPath, "")
+			s.mark(tc.markPath, `{"watched_at":"2020-01-01T00:00:00Z"}`)
+			admin := s.cookie
+			s.createAccount(admin, "member", "long enough", false)
+			s.cookie = s.login("member", "long enough")
+			s.mark(tc.markPath, "")
+			s.cookie = admin
+			trackingEqual(t, trackingObject(t, s.call("DELETE", tc.path, ""), 200), `{"removed":2}`)
+			trackingEqual(t, trackingObject(t, s.call("DELETE", tc.path, ""), 200), `{"removed":0}`)
+			var left int
+			if err := s.db.Read.QueryRow(`SELECT count(*) FROM watch_events`).Scan(&left); err != nil || left != 1 {
+				t.Fatalf("remaining events = %d, %v; want member's watch only", left, err)
+			}
+			catalogError(t, s.call("DELETE", tc.missing, ""), 404, "not_found")
+			s.cookie = s.login("member", "long enough")
+			trackingEqual(t, trackingObject(t, s.call("DELETE", tc.path, ""), 200), `{"removed":1}`)
+		})
+	}
 }

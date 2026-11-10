@@ -100,7 +100,7 @@ func TestHistoryLimitIsClamped(t *testing.T) {
 func TestShowWatched(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)
-	e.storeMarkShow(t, map[int][]tmdb.Episode{1: {ep(101, 1, "2008-01-20"), ep(102, 2, "2008-01-27"), ep(103, 3, "2008-02-03")}})
+	e.storeMarkShow(t, map[int][]tmdb.Episode{0: {ep(100, 1, "2007-12-25")}, 1: {ep(101, 1, "2008-01-20"), ep(102, 2, "2008-01-27"), ep(103, 3, "2008-02-03")}})
 	for _, at := range []time.Time{testNow.Add(-48 * time.Hour), testNow.Add(-24 * time.Hour)} {
 		if _, err := e.s.MarkEpisode(ctx, e.user, 101, When{At: at}); err != nil {
 			t.Fatal(err)
@@ -111,6 +111,10 @@ func TestShowWatched(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := e.s.MarkEpisode(ctx, e.user, 103, When{}); err != nil {
+		t.Fatal(err)
+	}
+	// A special is listed with season 0.
+	if _, err := e.s.MarkEpisode(ctx, e.user, 100, When{}); err != nil {
 		t.Fatal(err)
 	}
 	// LastWatchedOn comes from the latest watch, recorded first or not: 102's
@@ -135,19 +139,63 @@ func TestShowWatched(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []EpisodeWatched{
-		{TMDBID: 101, Plays: 2, LastWatchedAt: testNow.Add(-24 * time.Hour)},
-		{TMDBID: 102, Plays: 2, LastWatchedAt: time.Date(2008, 1, 27, 12, 0, 0, 0, time.UTC), LastWatchedOn: "2008-01-27"},
-		{TMDBID: 103, Plays: 2, LastWatchedAt: testNow},
+		{TMDBID: 100, SeasonNumber: 0, Plays: 1, LastWatchedAt: testNow},
+		{TMDBID: 101, SeasonNumber: 1, Plays: 2, LastWatchedAt: testNow.Add(-24 * time.Hour)},
+		{TMDBID: 102, SeasonNumber: 1, Plays: 2, LastWatchedAt: time.Date(2008, 1, 27, 12, 0, 0, 0, time.UTC), LastWatchedOn: "2008-01-27"},
+		{TMDBID: 103, SeasonNumber: 1, Plays: 2, LastWatchedAt: testNow},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("ShowWatched = %+v, want %+v", got, want)
 	}
 	for i := range want {
-		if got[i].TMDBID != want[i].TMDBID || got[i].Plays != want[i].Plays || !got[i].LastWatchedAt.Equal(want[i].LastWatchedAt) || got[i].LastWatchedOn != want[i].LastWatchedOn {
+		if got[i].TMDBID != want[i].TMDBID || got[i].SeasonNumber != want[i].SeasonNumber || got[i].Plays != want[i].Plays || !got[i].LastWatchedAt.Equal(want[i].LastWatchedAt) || got[i].LastWatchedOn != want[i].LastWatchedOn {
 			t.Errorf("ShowWatched[%d] = %+v, want %+v", i, got[i], want[i])
 		}
 	}
 	if none, err := e.s.ShowWatched(ctx, e.user, 5); err != nil || len(none) != 0 {
 		t.Errorf("unknown show: %+v, %v", none, err)
+	}
+}
+
+func TestEpisodeWatches(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	// Kept watches recorded out of time order, a merged one, and another
+	// user's and another episode's watches, which aren't listed.
+	twentyHours := e.record(t, Event{UserID: e.user, EpisodeID: e.episode, WatchedAt: testNow.Add(-20 * time.Hour), Source: SourceManual})
+	tenHours := e.record(t, Event{UserID: e.user, EpisodeID: e.episode, WatchedAt: testNow.Add(-10 * time.Hour), Source: SourceManual})
+	fourHours := e.record(t, Event{UserID: e.user, EpisodeID: e.episode, WatchedAt: testNow.Add(-4 * time.Hour), Source: SourceManual})
+	if r := e.record(t, Event{UserID: e.user, EpisodeID: e.episode, WatchedAt: testNow.Add(-4*time.Hour + time.Minute), Source: SourceManual}); r.MergedInto != fourHours.ID {
+		t.Fatalf("merged = %+v, want into %d", r, fourHours.ID)
+	}
+	e.record(t, Event{UserID: e.other, EpisodeID: e.episode, WatchedAt: testNow.Add(-2 * time.Hour), Source: SourceManual})
+	e.record(t, Event{UserID: e.user, EpisodeID: e.episode2, WatchedAt: testNow.Add(-2 * time.Hour), Source: SourceManual})
+
+	got, err := e.s.EpisodeWatches(ctx, e.user, 62085)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Newest first by time: twenty hours ago was recorded first, but is last.
+	want := []struct {
+		id int64
+		at time.Time
+	}{
+		{fourHours.ID, testNow.Add(-4 * time.Hour)},
+		{tenHours.ID, testNow.Add(-10 * time.Hour)},
+		{twentyHours.ID, testNow.Add(-20 * time.Hour)},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("EpisodeWatches = %+v, want %d kept watches", got, len(want))
+	}
+	for i, w := range got {
+		if w.ID != want[i].id || !w.WatchedAt.Equal(want[i].at) || w.Source != SourceManual {
+			t.Errorf("watch %d = %+v, want ID %d at %v", i, w, want[i].id, want[i].at)
+		}
+	}
+	if other, err := e.s.EpisodeWatches(ctx, e.other, 62085); err != nil || len(other) != 1 {
+		t.Errorf("other user: %+v, %v; want their one watch", other, err)
+	}
+	if none, err := e.s.EpisodeWatches(ctx, e.user, 999); err != nil || len(none) != 0 {
+		t.Errorf("unknown episode: %+v, %v", none, err)
 	}
 }

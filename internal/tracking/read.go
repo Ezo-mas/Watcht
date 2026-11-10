@@ -68,10 +68,12 @@ type Cursor struct {
 	ID        int64
 }
 
-// EpisodeWatched is how often a user watched one episode. LastWatchedOn is
-// the last watch's date when it has no time, or empty.
+// EpisodeWatched is how often a user watched one episode, and the episode's
+// season (0 for specials). LastWatchedOn is the last watch's date when it has
+// no time, or empty.
 type EpisodeWatched struct {
 	TMDBID        int
+	SeasonNumber  int
 	Plays         int
 	LastWatchedAt time.Time
 	LastWatchedOn string
@@ -143,6 +145,24 @@ func (s *Service) MovieWatches(ctx context.Context, userID int64, tmdbID int) ([
 	return out, nil
 }
 
+// EpisodeWatches returns the user's watches of an episode, by its TMDB episode
+// ID, newest first. An episode that isn't stored has none.
+func (s *Service) EpisodeWatches(ctx context.Context, userID int64, tmdbID int) ([]Watch, error) {
+	rows, err := s.read.EpisodeWatches(ctx, sqlc.EpisodeWatchesParams{UserID: userID, EpisodeTmdbID: int64(tmdbID)})
+	if err != nil {
+		return nil, fmt.Errorf("episode watches: %w", err)
+	}
+	out := make([]Watch, 0, len(rows))
+	for _, r := range rows {
+		at, err := db.ParseTimestamp(r.WatchedAt)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, Watch{ID: r.ID, WatchedAt: at, WatchedOn: r.WatchedOn.String, Source: Source(r.Source)})
+	}
+	return out, nil
+}
+
 // ShowWatched returns, for each episode of a show the user has watched, how
 // often and when last. Episodes TMDB no longer lists are included, since the
 // history is still there; the caller shows what it lists.
@@ -157,7 +177,7 @@ func (s *Service) ShowWatched(ctx context.Context, userID int64, showTMDBID int)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, EpisodeWatched{TMDBID: int(r.TmdbID), Plays: int(r.Plays), LastWatchedAt: at, LastWatchedOn: r.LastWatchedOn.String})
+		out = append(out, EpisodeWatched{TMDBID: int(r.TmdbID), SeasonNumber: int(r.SeasonNumber), Plays: int(r.Plays), LastWatchedAt: at, LastWatchedOn: r.LastWatchedOn.String})
 	}
 	return out, nil
 }

@@ -176,13 +176,23 @@ WHERE w.user_id = sqlc.arg(user_id)
     AND w.merged_into_id IS NULL
 ORDER BY w.watched_at DESC, w.id DESC;
 
+-- EpisodeWatches lists a user's kept watches of an episode, newest first.
+-- name: EpisodeWatches :many
+SELECT w.id, w.watched_at, w.watched_on, w.source FROM watch_events w
+JOIN episodes e ON e.id = w.episode_id
+WHERE w.user_id = sqlc.arg(user_id)
+    AND e.tmdb_id = sqlc.arg(episode_tmdb_id)
+    AND w.merged_into_id IS NULL
+ORDER BY w.watched_at DESC, w.id DESC;
+
 -- ShowWatchedEpisodes counts a user's kept watches of each episode of a show
 -- (listed or not), by TMDB episode ID. last_watched_on is the latest
 -- watch's watched_on: with a single max() SQLite takes bare columns from the
 -- row holding the max, and two kept watches of one episode never share a
--- time (the dedupe window merges them).
+-- time (the dedupe window merges them). season_number is the episode's own,
+-- the same on every row of it (0 for specials).
 -- name: ShowWatchedEpisodes :many
-SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at,
+SELECT e.tmdb_id, e.season_number, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at,
     w.watched_on AS last_watched_on
 FROM watch_events w
 JOIN episodes e ON e.id = w.episode_id
@@ -192,3 +202,24 @@ WHERE w.user_id = sqlc.arg(user_id)
     AND w.merged_into_id IS NULL
 GROUP BY e.tmdb_id
 ORDER BY e.tmdb_id;
+
+-- DeleteMovieWatches deletes kept plays; merged events are deleted by cascade.
+-- name: DeleteMovieWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = sqlc.arg(user_id) AND movie_id = sqlc.arg(movie_id)
+    AND merged_into_id IS NULL;
+
+-- name: DeleteEpisodeWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = sqlc.arg(user_id) AND episode_id = sqlc.arg(episode_id)
+    AND merged_into_id IS NULL;
+
+-- name: DeleteSeasonWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = sqlc.arg(user_id) AND merged_into_id IS NULL
+    AND episode_id IN (SELECT id FROM episodes WHERE season_id = sqlc.arg(season_id));
+
+-- name: DeleteShowWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = sqlc.arg(user_id) AND merged_into_id IS NULL
+    AND episode_id IN (SELECT id FROM episodes WHERE show_id = sqlc.arg(show_id));

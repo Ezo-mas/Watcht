@@ -21,9 +21,14 @@ type Tracking interface {
 	MarkEpisode(context.Context, int64, int, tracking.When) (tracking.Result, error)
 	MarkSeason(context.Context, int64, int, int, tracking.When) (int, error)
 	MarkShow(context.Context, int64, int, tracking.When) (int, error)
+	RemoveMovieWatches(context.Context, int64, int) (int, error)
+	RemoveEpisodeWatches(context.Context, int64, int) (int, error)
+	RemoveSeasonWatches(context.Context, int64, int, int) (int, error)
+	RemoveShowWatches(context.Context, int64, int) (int, error)
 	Remove(context.Context, int64, int64) error
 	History(context.Context, int64, tracking.Cursor, int) ([]tracking.HistoryEntry, error)
 	MovieWatches(context.Context, int64, int) ([]tracking.Watch, error)
+	EpisodeWatches(context.Context, int64, int) ([]tracking.Watch, error)
 	ShowWatched(context.Context, int64, int) ([]tracking.EpisodeWatched, error)
 }
 
@@ -37,8 +42,13 @@ func (h *trackingHandlers) register(api *apiMux) {
 	api.handle("POST /api/v1/episodes/{id}/watches", h.auth.withUser(h.markEpisode))
 	api.handle("POST /api/v1/shows/{id}/seasons/{number}/watches", h.auth.withUser(h.markSeason))
 	api.handle("POST /api/v1/shows/{id}/watches", h.auth.withUser(h.markShow))
+	api.handle("DELETE /api/v1/movies/{id}/watches", h.auth.withUser(h.removeMovieWatches))
+	api.handle("DELETE /api/v1/episodes/{id}/watches", h.auth.withUser(h.removeEpisodeWatches))
+	api.handle("DELETE /api/v1/shows/{id}/seasons/{number}/watches", h.auth.withUser(h.removeSeasonWatches))
+	api.handle("DELETE /api/v1/shows/{id}/watches", h.auth.withUser(h.removeShowWatches))
 	api.handle("DELETE /api/v1/watches/{id}", h.auth.withUser(h.remove))
 	api.handle("GET /api/v1/movies/{id}/watches", h.auth.withUser(h.movieWatches))
+	api.handle("GET /api/v1/episodes/{id}/watches", h.auth.withUser(h.episodeWatches))
 	api.handle("GET /api/v1/shows/{id}/watched", h.auth.withUser(h.showWatched))
 	api.handle("GET /api/v1/history", h.auth.withUser(h.history))
 }
@@ -187,12 +197,75 @@ func (h *trackingHandlers) remove(w http.ResponseWriter, r *http.Request, u auth
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *trackingHandlers) removeMovieWatches(w http.ResponseWriter, r *http.Request, u auth.User) {
+	h.removeAll(w, r, u, h.tracking.RemoveMovieWatches)
+}
+
+func (h *trackingHandlers) removeEpisodeWatches(w http.ResponseWriter, r *http.Request, u auth.User) {
+	h.removeAll(w, r, u, h.tracking.RemoveEpisodeWatches)
+}
+
+func (h *trackingHandlers) removeShowWatches(w http.ResponseWriter, r *http.Request, u auth.User) {
+	h.removeAll(w, r, u, h.tracking.RemoveShowWatches)
+}
+
+func (h *trackingHandlers) removeAll(w http.ResponseWriter, r *http.Request, u auth.User, remove func(context.Context, int64, int) (int, error)) {
+	id, ok := catalogPathNumber(w, r, "id", 1)
+	if !ok {
+		return
+	}
+	removed, err := remove(r.Context(), u.ID, id)
+	h.writeRemoved(w, r, removed, err)
+}
+
+func (h *trackingHandlers) removeSeasonWatches(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, ok := catalogPathNumber(w, r, "id", 1)
+	if !ok {
+		return
+	}
+	number, ok := catalogPathNumber(w, r, "number", 0)
+	if !ok {
+		return
+	}
+	removed, err := h.tracking.RemoveSeasonWatches(r.Context(), u.ID, id, number)
+	h.writeRemoved(w, r, removed, err)
+}
+
+func (h *trackingHandlers) writeRemoved(w http.ResponseWriter, r *http.Request, removed int, err error) {
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Removed int `json:"removed"`
+	}{removed})
+}
+
 func (h *trackingHandlers) movieWatches(w http.ResponseWriter, r *http.Request, u auth.User) {
 	id, ok := catalogPathNumber(w, r, "id", 1)
 	if !ok {
 		return
 	}
 	watches, err := h.tracking.MovieWatches(r.Context(), u.ID, id)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	out := make([]watchJSON, 0, len(watches))
+	for _, v := range watches {
+		out = append(out, watchResponse(v))
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Watches []watchJSON `json:"watches"`
+	}{out})
+}
+
+func (h *trackingHandlers) episodeWatches(w http.ResponseWriter, r *http.Request, u auth.User) {
+	id, ok := catalogPathNumber(w, r, "id", 1)
+	if !ok {
+		return
+	}
+	watches, err := h.tracking.EpisodeWatches(r.Context(), u.ID, id)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -218,7 +291,7 @@ func (h *trackingHandlers) showWatched(w http.ResponseWriter, r *http.Request, u
 	}
 	out := make([]episodeWatchedJSON, 0, len(episodes))
 	for _, v := range episodes {
-		out = append(out, episodeWatchedJSON{v.TMDBID, v.Plays, v.LastWatchedAt.UTC().Format(time.RFC3339), optional(v.LastWatchedOn)})
+		out = append(out, episodeWatchedJSON{v.TMDBID, v.SeasonNumber, v.Plays, v.LastWatchedAt.UTC().Format(time.RFC3339), optional(v.LastWatchedOn)})
 	}
 	writeJSON(w, http.StatusOK, struct {
 		Episodes []episodeWatchedJSON `json:"episodes"`
@@ -332,6 +405,7 @@ func optional(s string) *string {
 
 type episodeWatchedJSON struct {
 	TMDBID        int     `json:"tmdb_id"`
+	SeasonNumber  int     `json:"season_number"`
 	Plays         int     `json:"plays"`
 	LastWatchedAt string  `json:"last_watched_at"`
 	LastWatchedOn *string `json:"last_watched_on"`
