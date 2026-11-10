@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Movie, SearchResults, SeasonDetails, Show } from './types';
+import type { Movie, SearchResults, SeasonDetails, Show, ShowEpisodes } from './types';
 
 export function search(q: string, page?: number, fetchFn?: typeof fetch): Promise<SearchResults> {
 	const query = new URLSearchParams({ q });
@@ -21,4 +21,9 @@ export function getSeason(
 	fetchFn?: typeof fetch
 ): Promise<SeasonDetails> {
 	return api<SeasonDetails>('GET', `/api/v1/shows/${showId}/seasons/${number}`, undefined, fetchFn);
+}
+
+/** Every stored episode of a show, specials included, by season then number. */
+export function getShowEpisodes(showId: number, fetchFn?: typeof fetch): Promise<ShowEpisodes> {
+	return api<ShowEpisodes>('GET', `/api/v1/shows/${showId}/episodes`, undefined, fetchFn);
 }

@@ -51,6 +51,40 @@ export async function markShow(
 	return (await api<{ added: number }>('POST', path, markBody(when), fetchFn)).added;
 }
 
+export function removeMovieWatches(
+	tmdbId: number,
+	fetchFn?: typeof fetch
+): Promise<{ removed: number }> {
+	return api('DELETE', `/api/v1/movies/${tmdbId}/watches`, undefined, fetchFn);
+}
+
+export function removeEpisodeWatches(
+	tmdbId: number,
+	fetchFn?: typeof fetch
+): Promise<{ removed: number }> {
+	return api('DELETE', `/api/v1/episodes/${tmdbId}/watches`, undefined, fetchFn);
+}
+
+export function removeSeasonWatches(
+	showId: number,
+	seasonNumber: number,
+	fetchFn?: typeof fetch
+): Promise<{ removed: number }> {
+	return api(
+		'DELETE',
+		`/api/v1/shows/${showId}/seasons/${seasonNumber}/watches`,
+		undefined,
+		fetchFn
+	);
+}
+
+export function removeShowWatches(
+	showId: number,
+	fetchFn?: typeof fetch
+): Promise<{ removed: number }> {
+	return api('DELETE', `/api/v1/shows/${showId}/watches`, undefined, fetchFn);
+}
+
 /** Removes a watch, and every repeat merged into it. */
 export function removeWatch(id: number, fetchFn?: typeof fetch): Promise<void> {
 	return api<void>('DELETE', `/api/v1/watches/${id}`, undefined, fetchFn);
@@ -60,6 +94,11 @@ export async function movieWatches(tmdbId: number, fetchFn?: typeof fetch): Prom
 	return (
 		await api<{ watches: Watch[] }>('GET', `/api/v1/movies/${tmdbId}/watches`, undefined, fetchFn)
 	).watches;
+}
+
+export async function episodeWatches(tmdbId: number, fetchFn?: typeof fetch): Promise<Watch[]> {
+	const path = `/api/v1/episodes/${tmdbId}/watches`;
+	return (await api<{ watches: Watch[] }>('GET', path, undefined, fetchFn)).watches;
 }
 
 export async function showWatched(

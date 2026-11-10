@@ -8,8 +8,13 @@ import {
 	markMovie,
 	markSeason,
 	markShow,
+	episodeWatches,
 	movieWatches,
 	removeWatch,
+	removeMovieWatches,
+	removeEpisodeWatches,
+	removeSeasonWatches,
+	removeShowWatches,
 	showWatched
 } from './tracking';
 
@@ -203,18 +208,47 @@ describe('tracking endpoints', () => {
 		expect(sent(f)).toEqual({ path: '/api/v1/shows/1396/watches', method: 'POST', body: {} });
 	});
 
+	it.each([0, 3])(
+		'bulk removals return the count %i and use DELETE without a body',
+		async (removed) => {
+			const cases = [
+				[(f: typeof fetch) => removeMovieWatches(603, f), '/api/v1/movies/603/watches'],
+				[(f: typeof fetch) => removeEpisodeWatches(62085, f), '/api/v1/episodes/62085/watches'],
+				[
+					(f: typeof fetch) => removeSeasonWatches(1396, 0, f),
+					'/api/v1/shows/1396/seasons/0/watches'
+				],
+				[(f: typeof fetch) => removeShowWatches(1396, f), '/api/v1/shows/1396/watches']
+			] as const;
+			for (const [remove, path] of cases) {
+				const f = recorder(200, { removed });
+				expect(await remove(f)).toEqual({ removed });
+				expect(sent(f)).toEqual({ path, method: 'DELETE', body: undefined });
+			}
+		}
+	);
+
 	it('removeWatch', async () => {
 		const f = recorder(204);
 		await removeWatch(12, f);
 		expect(sent(f)).toEqual({ path: '/api/v1/watches/12', method: 'DELETE', body: undefined });
 	});
 
-	it('movieWatches and showWatched unwrap the lists', async () => {
+	it('movieWatches, episodeWatches, and showWatched unwrap the lists', async () => {
 		let f = recorder(200, { watches: [result.watch] });
 		expect(await movieWatches(603, f)).toEqual([result.watch]);
 		expect(sent(f)).toMatchObject({ path: '/api/v1/movies/603/watches', method: 'GET' });
+		f = recorder(200, { watches: [result.watch] });
+		expect(await episodeWatches(62085, f)).toEqual([result.watch]);
+		expect(sent(f)).toMatchObject({ path: '/api/v1/episodes/62085/watches', method: 'GET' });
 		const episodes = [
-			{ tmdb_id: 62085, plays: 2, last_watched_at: '2026-11-03T20:00:00Z', last_watched_on: null }
+			{
+				tmdb_id: 62085,
+				season_number: 1,
+				plays: 2,
+				last_watched_at: '2026-11-03T20:00:00Z',
+				last_watched_on: null
+			}
 		];
 		f = recorder(200, { episodes });
 		expect(await showWatched(1396, f)).toEqual(episodes);
