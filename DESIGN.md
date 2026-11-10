@@ -21,7 +21,8 @@ repeats the colours it uses. Shared components are in
   heights, and section spacing, or roomier ones. Never tighten spacing to
   match a reference (maintainer decision, 2026-11-06).
 - **The accent means "look here".** Burnt orange marks the current thing
-  (selected season, active filter, the primary button), episode codes,
+  (the current season or episode in a picker, active filter, the primary
+  button), episode codes,
   external links, and a result's type. Don't use it for decoration.
 - **State is obvious** (M4): watched is sage (`watched`), on the
   watchlist is blue (`listed`), and the accent stays for actions.
@@ -53,6 +54,8 @@ Pine and sage neutrals with a burnt orange accent. Both themes follow
 | `ok` | `#3d6b2c` | `#8fb07c` | Inline success notes (forms) |
 | `watched` | `#4f7a3c` | `#8fb07c` | Watched state: episode checks, the "Watched N times" mark, season progress bars |
 | `watched-hover` | `#3f6531` | `#76985f` | A hovered, focused, or open watched check on a poster card (a darker sage) |
+| `watched-part` | `#2c4428` | `#435941` | A partly watched check on the strip (a season card): a sage tint fill |
+| `on-watched-part` | `#a3c48f` | `#b5d3a1` | The check icon on `watched-part`: a light sage, since the strip is dark in both themes |
 | `listed` | `#2b6f86` | `#8cc7d9` | On the watchlist (M4 token: defined, not used yet) |
 | `tmdb-logo` | `#000000` | `#ffffff` | Fill of TMDB's logo mask only (see Footer and attribution) |
 | `strip` | `#14201a` | `#223428` | The poster card's action bar: dark in both themes, lifted off the canvas in dark |
@@ -61,11 +64,15 @@ Pine and sage neutrals with a burnt orange accent. Both themes follow
 title over it look the same either way: `screen` `#0e1712`, `on-screen`
 `#f1f5f1`, `on-screen-muted` `#c3d0c5`, `on-screen-accent` `#eb8f55`.
 These don't switch with the theme. In dark the hero fades into the canvas;
-in light it ends in a hard edge that the poster overlaps. Nothing
-focusable sits on the screen (the focus ring isn't tuned for it). The
-poster card's bar (`strip`) uses the same `on-screen*` colours; its
-controls are the exception and draw their ring in `on-screen-accent`
-(`focus-visible:outline-on-screen-accent`), inside the bar's 4 px padding.
+in light it ends in a hard edge that the poster overlaps. The theme's
+focus ring isn't tuned for the screen, so anything focusable on it (the
+breadcrumb pill's links on season and episode pages) draws its ring in
+`on-screen-accent` (`focus-visible:outline-on-screen-accent`), inside its
+pill. The cards' action bar (`strip`, see Poster cards) uses the same
+`on-screen*` colours, and its controls draw the same ring inset (2 px at
+−4 px, with a 2 px `strip` inset ring round it), so the card's edges never
+clip it and it reads on a sage check too. The hero's arrows draw it inset
+in their circle.
 
 Contrast (WCAG 2.1; AA is 4.5 for text, 3 for UI and large text):
 
@@ -83,12 +90,38 @@ Contrast (WCAG 2.1; AA is 4.5 for text, 3 for UI and large text):
 | watched / listed on surface (UI) | 4.9 / 5.5 | 6.9 / 9.0 |
 | on-screen / on-screen-muted / on-screen-accent on screen | 16.6 / 11.4 / 7.5 | same |
 | on-screen / on-screen-muted / on-screen-accent on strip | 15.2 / 10.5 / 6.9 | 12.0 / 8.3 / 5.4 |
+| on-screen on the breadcrumb pill (`screen` at 70%), over pure white | 6.2 | same |
+| Hero over a pure white backdrop (the bottom fade), sampled at 1440 (390): title (on-screen) at its top edge / base; year (on-screen-muted); score (on-screen-accent); TMDB mark (on-screen) | 5.2 / 7.2 (5.2); 3.6 (3.4); 4.4 (4.3); 10.2 | same |
+| canvas on ink (the `strong` badge) | 14.8 | 15.5 |
 | watched fill on strip (UI); surface (the check) on watched | 3.3; 4.9 | 5.5; 6.9 |
 | watched-hover on strip; surface (the check) on watched-hover | 2.5; 6.6 | 4.0; 5.1 |
+| Card check, not watched: on-screen-muted (the check) on strip | 10.5 | 8.3 |
+| Card check, partly watched: on-watched-part (the check) on watched-part; on strip; watched-part fill on strip | 5.5; 8.7; 1.6 | 4.7; 8.0; 1.7 |
+| Card check, all watched: watched fill on strip; surface (the check) on watched | 3.3; 4.9 | 5.5; 6.9 |
+| Card check, menu open: on-screen on the lift (`on-screen` 15% over strip) | 9.8 | 7.7 |
+
+The card check's three states (not watched, partly, all; see Poster
+cards) are told apart by the check itself, which keeps 3:1 or more on
+whatever is behind it in every state: a muted check on the bar, a light
+sage check on a sage tint, a surface check on solid sage. The partly
+watched tint is under 3:1 against the strip (1.6 / 1.7) and doesn't need
+to carry the state alone: its check is sage where the unwatched one is
+grey, the progress bar sits right above it, and the caption says "2 of 7
+watched". Partly and all watched differ in fill (2.1 / 3.2 between the
+two sages) and in the check's colour.
 
 `watched-hover` is a state change only: in light it's under 3:1 against
 the strip, but the check icon on it stays at 6.6 and keyboard focus adds
-the `on-screen-accent` ring, so the state never depends on the fill.
+the `on-screen-accent` ring, so the state never depends on the fill. The
+ring on a check is drawn inside it with a `strip` edge round it, so the
+ring always has the strip (6.9 / 5.4) on one side, whatever the sage.
+
+The hero's title, year, and score are all large text (24 px and up, or
+20 px bold), so AA there is 3:1. The fade behind them was measured over
+pure white, the worst case: the year, the faintest, keeps 3.6 at the top
+of the title line (3.4 on a 390 px phone), and everything is darker below
+it. Don't lighten the
+fade (65% `screen` at the title block's top, 90% at the hero's bottom).
 
 Translucent surfaces (the search overlay) were measured in the browser
 over the darkest content (the hero): muted text stays above 4.5. The
@@ -106,18 +139,20 @@ and weight. Numbers that line up (codes, dates, runtimes, counts) use
 | --- | --- | --- |
 | Title hero | 24 / 30 / 36 px, 700; year 400 in `on-screen-muted` | `text-2xl sm:text-3xl lg:text-4xl font-bold` |
 | Page heading | 20 px, 600 | `text-xl font-semibold tracking-tight` |
-| Section heading | 18 px, 600, hairline under it (Seasons; not the title page's placeholder sections) | `text-lg font-semibold` |
+| Section heading | 18 px, 600, no hairline; with a count, the count first ("7 Seasons", "22 Episodes") | `text-lg font-semibold` |
 | History day heading | 20 px (18 on phones): weekday 700, date 400; the day's total 15 px (14) `muted` | `text-lg sm:text-xl` |
 | Sub-heading (season, panel) | 16 px, 600 | `text-base font-semibold` |
-| Episode title | 15 px, 600; code (`S01E02`) 700 in `accent-text` | `text-[0.9375rem]` |
+| Episode title | 15 px, 600; code (`S01E02`) 700 in `accent-text`. 16 px in a season's episode list | `text-[0.9375rem]` |
+| Episode page title | The title hero, with the code first in `on-screen-accent`, joined by a no-break space | as Title hero |
 | Poster card title | 15 px, 600, one line (ellipsis); code 700 in `accent-text` | `text-[0.9375rem] truncate` |
 | Overview | 15 px, relaxed leading, max 72ch | `text-[0.9375rem] leading-relaxed` |
 | Body, rows | 14 px | `text-sm` |
 | Meta, hints, footer | 12 px | `text-xs` |
-| Fact labels, section list | 11 px, 600, uppercase, wide tracking, `muted` | `text-[0.6875rem] font-semibold uppercase tracking-wider` |
+| Fact labels, section list, picker label | 11 px, 600, uppercase, wide tracking, `muted` | `text-[0.6875rem] font-semibold uppercase tracking-wider` |
 | Badges | 11 px, 600 | see Badge |
 
-Uppercase is only for the classic fact labels and the section list. Keep
+Uppercase is only for the classic fact labels, the section list, and the
+picker strip's label. Keep
 running text under ~75 characters a line (`max-w-[72ch]`).
 
 ## Spacing and layout
@@ -129,14 +164,19 @@ running text under ~75 characters a line (`max-w-[72ch]`).
 - **Column:** `max-w-7xl` (1280 px) centred, `px-4` / `sm:px-6`. The
   header, footer, and title pages share it, so their left edges line up.
 - Ordinary pages render inside the layout's padded column. Title pages
-  (`/movies/[id]`, `/shows/[id]`) are full-bleed and lay out their own
-  column; the `(app)` layout decides by route ID.
+  (`/movies/[id]`, `/shows/[id]`, `/shows/[id]/seasons/[n]`,
+  `/shows/[id]/seasons/all`, and `/shows/[id]/seasons/[n]/episodes/[e]`)
+  are full-bleed and lay out their own column; the `(app)` layout decides
+  by route ID.
 - Breakpoints: phone below `sm` (640), tablet `sm`–`lg`, desktop `lg`
   (1024) up. Check 390, 1280, and 1440 wide.
 
 ## Title page anatomy (`TitlePage`)
 
-After classic Trakt's movie page (structure only; see Principles).
+After classic Trakt's movie page (structure only; see Principles). Movies,
+shows, seasons, and episodes all use it; season and episode pages add a
+breadcrumb pill above the title and a picker strip under the hero (see
+Season and episode pages).
 
 ```
 ┌──────────── header (glass; the hero shows through it) ─────────────┐
@@ -151,9 +191,11 @@ After classic Trakt's movie page (structure only; see Principles).
 │ OVERVIEW →  Overview, max 72ch                  │[Add to watchlist ]│
 │ STATS    →                                      │[Rate it          ]│
 │ PEOPLE   →                                      │[Where to watch   ]│
-│ …           Stats / People / Videos / Recommendations (movie)       │
-│             as wide as the overview and actions together            │
-│ [IMDb][TMDB]                                                        │
+│ …           Stats / People / Videos (movie)                         │
+│ [IMDb][TMDB] as wide as the overview and actions together           │
+│                                                                     │
+│ If you like The Matrix, check out…   the last section: full width,  │
+│ [poster][poster][poster][poster]…    under the poster column too    │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -162,15 +204,34 @@ After classic Trakt's movie page (structure only; see Principles).
   (`xl`); action column 16 rem (`lg`), 18 rem (`xl`); gaps 16 / 24 / 32 /
   40 px. The title and band sit in the main column (and over the actions
   on `lg`), so they line up with the facts, and the poster overlaps the
-  hero by 5 / 7 / 10 / 11 rem without touching the title.
+  hero by 5 / 7 / 10 / 11 rem without touching the title. Pages with
+  breadcrumbs measure the title-and-ratings block and align the poster
+  with its top, including when an episode title wraps.
 - **Hero:** starts under the translucent header (the layout pulls title
-  pages up by the header's height; the hero's top padding clears it).
-  Backdrop `object-cover` at 50% 25%, a bottom-to-top scrim to `screen`
-  plus a left scrim, the title at the bottom. Without a backdrop: shorter,
-  a faint ember glow on `screen`.
-- **Ratings band** (`RatingsBand`): a full-width strip along the bottom
-  of the hero (`screen` at 55%, a light blur, no hairline), 56 px (64
-  from `sm`). One entry per source, and only its mark (`SourceMark`,
+  pages up by the header's height). Tall, after classic Trakt: at least
+  24 rem on phones, 32 rem from `sm`, and from `lg` 42 rem or 78% of the
+  window, whichever is less (672 px at 1440×900, 562 px at 1280×720); a
+  long title makes it taller. The backdrop (`object-cover` at 50% 25%) is
+  in full colour: no side scrim, no dimming or blur over the picture
+  (maintainer decision, 2026-11-09). Only the title and the ratings band
+  sit on a short bottom fade: `screen` from 90% at the bottom to 65% at
+  the top of the breadcrumb or title, then a 64 px (96 from `sm`) tail to
+  nothing above it. The fade wraps the title block, so a title that wraps
+  to three lines is still on it. Without a backdrop: shorter (14 / 16 /
+  18 rem), a faint ember glow on `screen`.
+- **Arrows** (season, All episodes, and episode pages): the previous and
+  next page as round links on the hero's sides, after classic Trakt:
+  40 px (44 from `sm`), `screen` at 60% with a light blur and a 20%
+  `on-screen` border (85% on hover), a chevron in `on-screen`, 16 / 24 px
+  from the window's edges, centred in the picture above the title. Named
+  and titled for where they go ("Previous episode: S01E02 Cat's in the
+  Bag...", "Next season: Season 2", "Next: All episodes"). None past the
+  ends (no wrapping). Seasons follow the strip (1, 2, …, Specials, All);
+  episodes follow their season's list and stop at its ends, since the
+  next season's episode numbers aren't known without asking for it.
+- **Ratings band** (`RatingsBand`): a full-width row along the bottom
+  of the hero, on the hero's fade (no fill or blur of its own, no
+  hairline), 56 px (64 from `sm`). One entry per source, and only its mark (`SourceMark`,
   screen tone) and score (20 px bold `on-screen-accent`): no "/ 10" and
   no visible vote count. The votes are in the entry's tooltip ("29,114
   votes on TMDB"), and screen readers hear "TMDB rating 8.3 out of 10,
@@ -178,16 +239,24 @@ After classic Trakt's movie page (structure only; see Principles).
   M8 adds MDBList's sources, which join as more entries; no greyed-out or
   empty slots. No band without votes. Nothing on it is focusable (no
   "All stats" link; the section list goes there). Runtime, status, and
-  season count are facts, not hero chips.
+  season count are facts, not hero chips. An episode has a score but no
+  vote count: its tooltip is "TMDB rating 7.8", and screen readers hear
+  "TMDB rating 7.8 out of 10". Seasons show the mean of positive
+  episode scores, to one decimal; no band when none are rated.
 - **Poster column** (`aside`): the poster (`rounded-md`, a soft shadow),
   the section list, and the link icons. From `sm` it spans every row of
-  the body and is sticky, so it stays in view down the whole page: 4 rem
-  from the top, or, when it's taller than the window (a short laptop
-  screen), stuck by its bottom edge 16 px above the window's, so the list
-  and links stay reachable.
+  the body but the last section's and is sticky, so it stays in view down
+  the page until that section starts: 4 rem from the top, or, when it's
+  taller than the window (a short laptop screen), stuck by its bottom
+  edge 16 px above the window's, so the list and links stay reachable.
+  The sticky `aside` sits in a cell of its own that spans those rows (a
+  sticky grid item is held by the whole grid in Chrome, not its area), so
+  it scrolls away where the last section starts under it.
 - **Section list** (`SectionNav`, two or more sections): uppercase
-  11 px rows with hairlines and a right arrow, a count before it when
-  given (Seasons 2). Links scroll on the same page (smooth unless reduced
+  11 px rows with hairlines and a right arrow. A section with a count
+  carries it first in its label, singular for one ("7 Seasons", "22
+  Episodes"; `countLabel`), as its heading does; there's no separate
+  count slot. Links scroll on the same page (smooth unless reduced
   motion; `scroll-padding-top` clears the header). Scroll-spy: the
   section whose top has passed a third of the way down the window is
   current (`aria-current="true"`): `ink`, the arrow in `accent-text`, and
@@ -210,20 +279,27 @@ After classic Trakt's movie page (structure only; see Principles).
 - **Facts** (`Facts`): label/value pairs that wrap across the main
   column, under the band. Empty values are dropped. Movie: Released,
   Runtime, Status, Genres, Original title (when different), Language.
-  Show: Aired, Status, Episodes, Genres, Original title, Language. A
-  visually hidden "Overview" `h2` heads them (the list's first target).
+  Show: Aired, Status, Episodes (regular seasons), Genres, Original
+  title, Language. Season: Premiered, Episodes, Runtime (the sum of the
+  episodes' known runtimes), Genres (the show's). Episode: Aired (Airs
+  when it hasn't), Runtime. A visually hidden "Overview" `h2` heads them
+  (the list's first target).
 - Under the facts, in the main column: tagline (italic, `muted`), then
-  the overview (max 72ch); a show's seasons follow there too.
+  the overview (max 72ch). A season without an overview shows the
+  show's.
 - **Action column** (`actions` snippet): the classic right-hand column on
   `lg`, beside the facts and overview; under the overview below `lg`
   (beside the sticky poster column on tablets). Not sticky. A flexible
   grid row takes up its extra height, so the overview never moves when it
-  grows; the sections below start under whichever is taller. Show pages:
-  the mark split button. Results are toasts (see Toasts).
-- **Movie action column** (`MovieActions`), after classic Trakt's play
-  button. One split button states and changes the watched state, then
-  the actions still to come; results are toasts (see Toasts). No list of watches under it
-  (maintainer decision, 2026-11-06); the plays are in its menu.
+  grows; the sections below start under whichever is taller. Movies and
+  episodes have the plays column, shows and seasons the progress column
+  (both below). Results are toasts (see Toasts).
+- **Movie and episode action column** (`PlaysActions`), after classic
+  Trakt's play button. One split button states and changes the watched
+  state, then the actions still to come; results are toasts (see
+  Toasts). No list of watches under it (maintainer decision, 2026-11-06);
+  the plays are in its menu. An episode's plays come from its own
+  watches, by its TMDB episode ID.
   - *Not watched:* the mark split button, "Mark as watched" (marks it
     just now) with a + that opens the when-choice (see Mark split
     button).
@@ -250,8 +326,8 @@ After classic Trakt's movie page (structure only; see Principles).
   2026-11-06). The dialog is named "Plays of The Matrix" and takes focus
   itself on open, as the history menu does. It starts with every play of
   the movie, newest first (the API returns them all, unpaged): date and
-  time, a source badge when not manual, and a trash button ("Remove the
-  play from …"). Past about five rows the list scrolls inside the menu
+  time, a source badge when not manual, and a compact trash-and-"Remove"
+  button ("Remove the play from …"). Past about five rows the list scrolls inside the menu
   (17 rem tall on phones, 14 rem from `sm`, never more than the window
   less 13 rem; `overscroll-contain`), so the menu never grows past the
   window; focus moving to a row (arrow keys, a confirm) scrolls it into
@@ -261,19 +337,166 @@ After classic Trakt's movie page (structure only; see Principles).
   it. No undo: a play from Plex, Jellyfin, or an import can't be
   re-created through the manual mark. After a removal the menu stays open
   and focus moves to the next play's trash button. Fixed under the list
-  (not in it), above a hairline: "Remove all plays" (placeholder, as in
-  the history menu) and "View all plays" (a link to `/history`, with
+  (not in it), above a hairline: "Remove all plays" (a destructive action with `InlineConfirm`) and "View all plays" (a link to `/history`, with
   "Your whole history; filters come later" under it, since history can't
-  be filtered to one title yet). No "Keep it" and no ×: Esc, a click or
+  be filtered to one title yet). After another divider, "Add another play"
+  with a plus-circle opens the same when-choices as the +, with the same
+  busy state. No "Keep it" and no ×: Esc, a click or
   tap outside, focus leaving, or the button itself close it.
-- **Season header:** the season's "x of y watched" (listed episodes only)
-  with a 64 px sage progress bar, then a quiet "Mark season watched".
+- **Show and season action column**, after classic Trakt's progress
+  button (maintainer decision, 2026-11-09):
+  - *Nothing watched* (or the watched episodes can't be loaded): the mark
+    split button with a +, "Mark show watched" or "Mark season watched".
+    The show's adds a `muted` 12 px note: "Adds every aired episode you
+    haven't watched yet, except specials."
+  - *Something watched* (`ProgressButton`): PlaysButton's split shape,
+    size, and colours (at least 48 px, `watched` with `surface` text). The
+    main part has the check, "**57%** watched" (the percentage 20 px 700,
+    the word 14 px 600) and a second line, "76 of 133 episodes · 78 plays"
+    (12 px, tabular; it wraps rather than cut, and the + grows with it).
+    Its name is "57% watched: 76 of 133 episodes, 78 plays. Your history
+    of Breaking Bad". It opens a `MenuPopover` (288 px, named "Your
+    history of …"), after Trakt's: "Watch remaining" (a check; "Marks
+    the rest watched just now" under it: the +'s "Just now", closing the
+    menu first, so focus is back on the button while it runs; off, with
+    the +'s reason under it, while episodes are being fetched), "View
+    history" (a link to `/history`, "Your whole history; filters come
+    later" under it), then above a hairline the placeholders "Rewatch",
+    "Drop" (the plan's Backlog), and the confirmed "Remove all plays" action. The + marks the
+    rest: the when-choice, then the same show or season mark and toasts. A 4 px sage bar (`watched` on a
+    `line` track, `rounded-full`, decoration) sits 8 px under the button.
+  - Counts: a show counts its regular seasons only (specials are marked
+    on their own); the total is their TMDB episode counts, watched the
+    watched episodes in them (never more than a season's count), plays
+    every play of those. A season counts its listed episodes once they're
+    in, and the show's counts for its number while they're still being
+    fetched. The percentage rounds down, shows at least 1% once anything
+    is watched, and 100% only when everything is.
+  - While episodes are being fetched, the + (or both parts of the mark
+    button) is off with the reason under it; the main part still opens
+    the menu. The first mark moves focus from the mark button to the
+    progress button.
+  - Then the placeholders (`PlaceholderActions`), as on the movie.
 
-### Sections under the overview (`below` snippet)
+### Season and episode pages
 
-Movies have Stats, People, Videos, and Recommendations (shows get them
-later; their main section stays Seasons). They span the main and action
-columns on `lg`. Each is a `TitleSection`: an 18 px heading with no
+Routes with numbers: `/shows/{id}/seasons/{n}` and
+`/shows/{id}/seasons/{n}/episodes/{e}` (maintainer decision, 2026-11-09),
+and every episode at `/shows/{id}/seasons/all` (a route of its own, so
+"all" never reaches the number check).
+The show loads once in their shared layout, so moving between seasons or
+episodes doesn't fetch it again. The episode is found by its number in
+its season's stored episodes; everything after that (plays, marks) uses
+its TMDB episode ID. A season the show doesn't list, or an episode its
+season doesn't list, is a 404 ("Season not found", "Episode not
+found"). Its error page links to the show, and an episode's to its
+season too, since those still load (history links to episodes TMDB has
+dropped land there). A show that can't be loaded is "Title not found"
+on its season and episode pages too. The show page's old `?season=N`
+links redirect to the season page.
+
+```
+┌──────────────────────── backdrop (the show's) ─────────────────────┐
+│ ┌──────┐  (Breaking Bad / Season 1 | Season finale)  breadcrumb   │
+│ │poster│  S01E07 A No Rough Stuff Type Deal 2008                  │
+├─│season│───────────────────────────────────────────────────────────┤
+│ │or the│  [TMDB] 8.4                     (episodes with a score)   │
+├─│show's│───────────────────────────────────────────────────────────┤
+│ └──────┘  EPISODE [1][2][3]…[7]  picker strip (main + actions)     │
+│           AIRED … RUNTIME …                     │[progress / plays]│
+│           Overview                              │[placeholders    ]│
+└───────────────────────────────────────────────────────────────────┘
+```
+
+- **Poster:** the season's, else the show's. **Backdrop:** the show's on
+  a season page; on an episode page the episode's still at full size
+  (`still_large_url`), else the show's.
+  **Title:** the season's name ("Season 1") with the years its episodes
+  aired ("2008–2009"), or the episode's code and name with its air year.
+  The TMDB link is the season's or episode's own page there (no IMDb:
+  no season page there, and no episode IMDb ID in the API).
+- **Breadcrumb pill** (`Breadcrumbs`), on the hero above the title: the
+  show (and on episodes the season) as links in a `rounded-full` pill,
+  `screen` at 70% with a light blur and a 20% `on-screen` border,
+  14 px `on-screen` text, "/" between them in `on-screen-muted`; 40 px
+  tall on phones, 32 px from `sm`. A long show name is cut with an
+  ellipsis first. On an episode that opens or closes something, a flag
+  is joined on the end, inverted (`on-screen` fill, `screen` text, 13 px
+  600): "Series premiere", "Season premiere", "Season finale", or "Series
+  finale". On phones, where the hero's column is narrow, the flag wraps
+  under the pill as its own pill.
+- **Picker strip** (`PickerStrip`), the first row under the hero, as wide
+  as the facts and actions together (on lg): the label ("Season",
+  "Episode") in the fact-label style, then the siblings as links in a
+  row that scrolls sideways when it doesn't fit (a thin scrollbar,
+  padding inside so focus rings aren't clipped; 12 px under the chips,
+  taken back out of the layout with a negative margin, so the scrollbar,
+  an overlay one too, runs under the chips and never over them). Chips are 40 px on
+  phones, 32 px from `sm`, `rounded-md`, `line` border on `surface`; the
+  current one is accent-filled with `aria-current="page"`; a season whose
+  episodes are still loading has a dashed border. Seasons: 1, 2, …,
+  Specials, All (screen readers hear "Season 2", and "All episodes" for
+  All; the tooltip is the episode count, or "Every episode, specials
+  included"). Episodes: 1 … n (the tooltip is the episode's title). The
+  current chip is scrolled into view inside the strip (not the page) on
+  load. Picking one keeps the scroll position and focus
+  (`data-sveltekit-reset="false"`), like switching tabs. On phones the
+  poster spans the strip and the facts, so both sit beside it.
+- **Milestones** (`episodeMilestone`, conservative so a badge is never
+  wrong): the first episode of season 1 is the series premiere, the
+  first of a later season its season premiere; the last listed episode of
+  a season is its finale once every episode of it has aired and the
+  season can't still grow (a later season exists, or the show isn't in
+  production); for the last season of a show no longer in production,
+  that's the series finale. Specials have none.
+- **Sections:** a season has Overview, its episodes ("7 Episodes"),
+  People, and Videos; an episode Overview, People, and Videos.
+- **All episodes** (`/shows/{id}/seasons/all`): every episode the show
+  lists, specials included, from one request (`GET /shows/{id}/episodes`;
+  maintainer decision). Title "All episodes" with the show's years
+  ("2008–2013"), the show's backdrop and poster, the show in the
+  breadcrumb, the season strip with All current, and an arrow back to
+  Specials (or the last season). Facts: Episodes and Runtime (the sum of
+  their known runtimes). The show's action column (`ShowActions`, as on
+  the show page). Sections: Overview and "16 Episodes": the episode list
+  in the strip's order (regular seasons by number, then specials), each
+  row linking to its own season's episode page, specials coded "S00E03".
+  The list is the page's last section, so it runs the full width under
+  the poster column. While any season is still being fetched it's the
+  pending state and polls (`pollShowEpisodes`), with the show's own
+  count in the heading meanwhile.
+  - *Long shows* (General Hospital lists about 15,000 episodes): the list
+    renders a chunk at a time (`nextLimit` in `#lib/chunk.js`): the first
+    100 rows, then 100 more each time the reader comes within 1,500 px of
+    its end (an IntersectionObserver), so the page opens with a small DOM.
+    Under the rows, a quiet "Show 100 more" button ("Show the last 12"
+    at the end; 40 px on phones) and "Showing 100 of 15,012 episodes"
+    in `muted`, for the keyboard and for browsers without the observer;
+    the button moves focus to the first new episode's title. The count
+    in the heading, the section list, and the facts is always the whole
+    show's. Per row, everything is a lookup: watched episodes by ID (a
+    Map), milestones from each season's first and last episode worked
+    out once (`seasonEnds`). The browser's find-in-page only sees the
+    rows shown so far.
+- **Pending:** if the season's episodes are still being fetched, the
+  season page shows the pending state in Episodes and polls (see
+  States; `EpisodesFetching`); the episode page shows the code and the fetching line, polls,
+  then loads again to find the episode.
+
+### Sections under the overview (`below` and `last` snippets)
+
+Movies have Stats, People, Videos, and Recommendations. Shows have
+Recent episodes, People, Seasons, Stats, Videos, and Recommendations;
+seasons Episodes, People, and Videos; episodes People and Videos; All
+episodes only its Episodes. They span the main and action columns on
+`lg`, beside the poster column. The last one (`last`: Recommendations on
+movies and shows, Videos on seasons and episodes, the episode list on All
+episodes) spans the full column instead, under the poster column too,
+after Trakt's "If you like…" row; the poster column stops sticking where
+it starts. The section list still scrolls to it and marks it current.
+Phones are unchanged (everything is full width there), and the phone
+section strip sits above the first section, whichever snippet that's in.
+Each is a `TitleSection`: an 18 px heading with no
 hairline under it (unlike Seasons; maintainer decision, 2026-11-06), a
 filter on the right, a `muted` line saying what's coming, then the
 content. Until their data exists they are placeholders (see
@@ -305,6 +528,59 @@ names, counts, or scores that aren't real.
 - **Recommendations** (`RecommendationsSection`): "If you like
   The Matrix, check out…" and a row of 2:3 poster shapes on the poster
   card grid.
+- **Recent episodes** (`RecentEpisodesSection`, shows): "Up next" (one
+  card) and "Recently aired" (two), each a 16 px `h3`, on a three-column
+  grid on lg (two columns from `sm`, with one recently aired card; on
+  phones each block is a two-column row). Placeholders until slice 4's
+  show progress fills them (maintainer decision): the episode card's
+  shape (a 16:9 `raised` still with a monitor glyph, the dark `strip`
+  bar with faint button and score shapes, two caption bars) and "Your
+  next episode and the latest ones to air come with show progress in a
+  later update."
+- **Seasons** (`SeasonGrid`, shows): headed "7 Seasons" (regular
+  seasons only; "Seasons" when there are only specials), with the list
+  controls on the right. The poster card grid (see Poster cards), regular
+  seasons in order and specials last, one per number. Each card is the
+  season's poster (else the show's), a 4 px progress bar along its
+  bottom edge, the bar, and a caption: the name, then "2 of 7 watched"
+  once any is watched, else "7 episodes". Its tooltip names the show and
+  the season ("Breaking Bad – Season 1", or the season's own name). It
+  opens the season page; episodes are listed only there.
+  - *The bar's check* shows how much is watched and marks the season
+    (`markSeason`): its aired episodes not watched yet, so on a partly
+    watched season it marks the rest. Three states (`checkState`; see
+    Poster cards): not watched (a muted check), partly watched (a sage
+    tint), all watched (solid sage). After Trakt's season cards there's
+    no chevron: the check itself opens the when-choice (`WhenMenu` with
+    the check as its trigger, `align="auto"`, see When-choice), named
+    "Mark Season 1 watched…" or "Mark the rest of Season 1 watched…"
+    (`aria-haspopup="dialog"`, `aria-expanded`), so a mark is two clicks,
+    or Enter twice (focus starts on "Just now"). Esc closes it and
+    returns focus to the check. Off (`aria-disabled`, faded by colour so
+    the focus ring stays full strength, the reason as its tooltip and
+    description, and it doesn't open) while its episodes are being
+    fetched or before it starts airing (`seasonMark`). A partly watched
+    season leads with "Watch remaining" (just now), then Air dates and
+    Other date, followed by confirmed Remove all plays. Every episode
+    watched: a sage button ("Remove or add plays of Season 1…") opening
+    the shared "Remove from history?" menu: Remove all plays, Keep it,
+    divider, Watch again (currently disabled with an explanation: the existing
+    season mark only adds unwatched episodes; rewatch behavior needs a maintainer decision). While a mark runs the check spins (`aria-busy`). Results
+    are toasts named for the season ("Season 1: Added 7 episodes to your
+    history."); the check keeps focus after a mark. No check while the watched
+    episodes can't be loaded. Then the watchlist placeholder.
+- **List controls** (`ListControls`, over the season grid and every
+  episode list), after Trakt's: "Sort: Number ▾" joined to a direction
+  button, a "Filter by title" field ("Filter by name" for seasons), and a
+  hide-watched toggle (eye ▾), all placeholders (see Placeholders). The
+  field looks like a quiet input (`field`, `line` border, a magnifier)
+  and is `readonly` with `aria-disabled`, named for what it will do
+  ("Filter episodes by title"). A `role="group"` row; on phones it takes
+  the full width under the heading, the field flexible and "Sort:"
+  dropped (the button's name keeps it).
+- **Episodes** (seasons, All episodes): headed with the count ("7
+  Episodes"), the list controls on the right, then the episode list (see
+  Rows).
 - Rows of tiles (`PlaceholderRow`) fill the width and keep only their
   first row (`auto-fill` columns, the rest clipped), so a row is full at
   every width.
@@ -318,7 +594,8 @@ is on); never build TMDB URLs. `referrerpolicy="no-referrer"`;
 | Kind | Ratio | Source size | Shown at |
 | --- | --- | --- | --- |
 | Poster | 2:3 | `poster_url` (w342) | 112 / 160 / 192 / 224 px on title pages; 150–175 px in poster cards; 40 px in the overlay; 56–64 px on the search page |
-| Still | 16:9 | `still_url` (w300) | 120 px (phone), 208 px |
+| Still | 16:9 | `still_url` (w300) | Episode cards: full width (phone), 208 / 240 px |
+| Large still | 16:9 | `still_large_url` (full size) | The episode page's hero |
 | Backdrop | cover | `backdrop_url` (w1280) | Full-width hero |
 
 Missing or failed images keep the same box on `raised` with a film-strip
@@ -333,10 +610,14 @@ with a soft shadow.
     an aired episode's date).
   - `quiet` (`raised` + `muted`): secondary facts (runtime, TMDB score).
   - `outline`: not yet (an upcoming air date, "No air date").
-- Filters and pickers are buttons or links, 32 px tall, `rounded-md`:
-  `border-line` + `bg-surface`; selected season is an accent fill;
-  pressed filter is an accent border with a 15% accent tint; a season
-  whose episodes are still loading has a dashed border.
+  - `strong` (`ink` with `canvas` text, inverted in both themes): an
+    episode that opens or closes a season or the series ("Season
+    finale"; see Milestones).
+- Filters and pickers are buttons or links, 32 px tall (40 on phones),
+  `rounded-md`: `border-line` + `bg-surface`; the current season or
+  episode in a picker strip is an accent fill; pressed filter is an
+  accent border with a 15% accent tint; a season whose episodes are
+  still loading has a dashed border.
 
 ## Buttons and links
 
@@ -353,21 +634,21 @@ with a soft shadow.
   focusable with `aria-disabled="true"`, a name for what they will do,
   and a tooltip plus accessible description saying "Coming in a later
   update". No made-up data (counts, options) in or next to them. Used by
-  the poster card's watchlist button, the history and plays menus'
-  "Remove all plays", the history toolbar, the movie action column's
-  watchlist, rating, and where-to-watch buttons, and the title page's
-  section filters
+  the poster card's watchlist button, the history toolbar, the action columns'
+  watchlist, rating, and where-to-watch buttons, the episode and season
+  cards' watchlist button, the progress menu's "Rewatch" and "Drop", the list controls over the season grid and episode
+  lists, and the title page's section filters
   (`PlaceholderFilter`, described by the section's "coming" line).
   Content that comes later is shown as static shapes on `raised` (no
   pulse, which means loading) with one `muted` line saying what's coming.
 - **Mark split button** (`MarkButton`): the main part marks it watched
   just now in one click (check icon + label: "Mark as watched", "Mark
   season watched", "Mark show watched"); the chevron opens the
-  when-choice. In the movie's action column the chevron is a + instead
-  (`menuIcon="plus"`, as on `PlaysButton`), which turns 45° into an ×
-  while the menu is open (200 ms; instant with reduced motion). Show and
-  season marks keep the chevron for now. `primary` (40 px) in the action column, `quiet` (32 px)
-  for a section. Busy shows a spinner in the main part (`aria-busy`);
+  when-choice. In the action columns (movie, show, season, episode) the
+  chevron is a + instead (`menuIcon="plus"`, as on `PlaysButton` and
+  `ProgressButton`), which turns 45° into an × while the menu is open
+  (200 ms; instant with reduced motion). `primary` (40 px) in the action
+  column, `quiet` (32 px) for a section. Busy shows a spinner in the main part (`aria-busy`);
   both parts stay enabled while a mark runs, so keyboard focus isn't
   dropped, and a second mark is ignored. When it can't be used, both
   parts are disabled and the reason is shown under it in
@@ -382,7 +663,10 @@ with a soft shadow.
   added: nothing has aired yet."; a failed mark is an error toast.
 - **When-choice** (`WhenMenu`, its options in `WhenChoices`, which the
   history card's menu shares): a disclosure like the user menu, under its
-  trigger, 288 px (never wider than the screen less 2 rem). "When did you
+  trigger, 288 px (never wider than the screen less 2 rem), lined up with
+  the trigger's left or right edge, or (`align="auto"`, on grid cards)
+  with its left edge shifted just enough to stay 16 px inside the
+  window. "When did you
   watch it?", then "Just now", "Release date" / "Air date" / "Air dates"
   with the date or the reason it's off on the right ("No date on TMDB",
   "Not out yet"; off options stay focusable with `aria-disabled`), and
@@ -391,31 +675,54 @@ with a soft shadow.
   options, Esc closes and returns focus. Release and air dates follow the
   server's rule: out from noon UTC that day. Options are 40 px on phones.
   A watch marked at the release or air date shows that date with no time,
-  the same in every zone (`formatWatch`).
+  the same in every zone (`formatWatch`). On cards the trigger is the
+  check itself (the `trigger` snippet), whose name alone ("Mark Season 1
+  watched…") doesn't say a choice follows, so it's marked
+  `aria-haspopup="dialog"` and the panel is a `role="dialog"` named "When
+  did you watch it?" (`popup`); the action columns' chevron and + keep
+  the plain disclosure.
 
 ## Rows
 
-- **Episode row** (`EpisodeRow`): still | code (`S01E02`) + title, badges
-  (air date, runtime, plays), overview (3 lines on phones) | watched
-  check. Rows are
-  separated by `divide-line`, no cards. Headings: season `h3`, episode
-  `h4`.
-- **Episode watched check** (with `onmark`): a 32 px box (40 px on
-  phones) joined to a when-choice chevron (stacked on phones), on every
-  listed episode. Unwatched: an outlined button with a faint check that
-  turns sage on hover; one click marks it watched just now, then focus
-  moves to the chevron. Watched: a sage-filled check that is *not* a
-  button (a stray click can't undo a watch; watches are removed on
-  /history), plus a quiet "N plays" badge; the chevron still adds
-  another watch. Unaired episodes (no air date, or not out yet) can
-  still be marked just now or at another date (maintainer decision); the
-  outline "Airs …" or "No air date" badge says they haven't aired, and
-  only the menu's "Air date" is off. Its result or error is a toast that
-  names the episode ("Added S01E02 to your history: …", "S01E02: …"),
-  since it floats away from the row; focus stays on the row's chevron. While the watched episodes
-  can't be loaded, rows have no check (and the season no progress), so
-  nothing looks unwatched by mistake; the action column says so with
-  "Try again".
+- **Episode row** (`EpisodeRow`, a season's episode list), after classic
+  Trakt's season page: an episode card on the left, the text on the
+  right; rows separated by `divide-line`, `py-4`. Card 13 rem (`sm`),
+  15 rem (`lg`); on phones it's full width above the text. Headings: the
+  section `h2` "Episodes", each episode an `h3`.
+  - *Card:* the still (16:9, lazy, a link to the episode page that's
+    hidden from the keyboard and screen readers, since the title is the
+    same link), and the cards' `strip` bar joined under it (see Poster
+    cards: no padding, the check flush in the bottom-left corner): the
+    watched check, the watchlist placeholder, and on the right TMDB's
+    score as the heart and percentage (`tmdbPercent`), when there is
+    one. No chevron (after Trakt's cards). Controls are the bar's full
+    height and square, 40 px on phones and 32 px from `sm`.
+  - *Watched check* (without the watched episodes loaded, there's none),
+    two states: unwatched, a check in `on-screen-muted` on the bar that
+    fills sage on hover. It opens the when-choice itself ("Mark S01E02
+    “Name” watched…", `aria-haspopup="dialog"`), opening to the right
+    (lined up with the check's left edge); Esc returns focus to the check.
+    Once the mark is in, the check turns sage and keeps focus. Watched,
+    the sage-filled check opens "Remove from history?": "Only this play"
+    removes the newest play fetched when chosen; "Remove all plays" opens an `InlineConfirm`; "Keep it" closes. After a
+    divider, "Add another play" opens the when-choices in the same popup.
+    Esc closes and returns focus to the check. A quiet "N plays" badge
+    shows the count.
+    Unaired episodes (no air date, or not out yet) can still be marked
+    just now or at another date (maintainer decision); the outline
+    "Airs …" or "No air date" badge says they haven't aired, and only the
+    menu's "Air date" is off. Its result or error is a toast that names
+    the episode ("Added S01E02 to your history: …", "S01E02: …"), since
+    it floats away from the row.
+  - *Text:* the code (`S01E02`, 700 `accent-text`) and title, 16 px 600,
+    a link to the episode page (underline on hover); badges (air date
+    `accent`, or `outline` when upcoming; runtime; plays; a `strong`
+    premiere or finale badge); the overview, 14 px `muted`, relaxed,
+    three lines on phones and four from `sm` (the full text is on the
+    episode page).
+  - While the watched episodes can't be loaded, rows have no check (and
+    the season no progress), so nothing looks unwatched by mistake; the
+    action column says so with "Try again".
 - **Search result** (`SearchResultRow`): poster | title + year, badges
   (type in accent, TMDB score), original title if different; the search
   page adds a 2-line overview. Hover is `raised`; the keyboard-chosen row
@@ -425,8 +732,9 @@ with a soft shadow.
 
 ## Poster cards (`PosterCard`)
 
-After classic Trakt's history grid. Used by `/history`; the watchlist
-(slice 3) and dashboard (slice 5) reuse it.
+After classic Trakt's history grid. Used by `/history` and a show's
+Seasons; the watchlist (slice 3) and dashboard (slice 5) reuse it. The
+episode cards (Rows) and the Recent episodes placeholders share its bar.
 
 ```
 ┌──────────┐
@@ -434,7 +742,7 @@ After classic Trakt's history grid. Used by `/history`; the watchlist
 │  poster  │
 │          │
 ├──────────┤
-│[✓][≡]♥67%│  bar on `strip`: actions left, TMDB rating right
+│✓ ≡   ♥67%│  bar on `strip`: the check flush in the corner, rating right
 └──────────┘
 S04E05 Mercy Mi…   caption, centred, one line: 15 px 600, code in accent-text
 3 Nov 2026, 02:18  12 px `muted`, tabular, one line
@@ -454,18 +762,56 @@ S04E05 Mercy Mi…   caption, centred, one line: 15 px 600, code in accent-text
   card's z-index under sticky headings.
 - **Poster:** `Artwork`, lazy; the placeholder names the title. Episodes
   use the show's poster, then the episode still (cropped to 2:3).
-- **Bar** (`strip`, 4 px padding, joined to the poster): 40 px buttons on
-  phones, 32 px from `sm`. Today's contents:
-  - Watched check (`WatchedCheck`): a filled `watched` square with a check
+- **Bar** (`strip`, joined to the poster; `stripBar` and the control
+  classes in `#lib/strip.js`), after Trakt's (maintainer decision,
+  2026-11-09): no padding and no inner tiles. It's as tall as its
+  controls, 40 px on phones and 32 px from `sm`, its bottom corners the
+  card's (`rounded-b-sm`). Every control fills its full height with
+  square corners, directly on the bar; the watched check sits flush
+  against the card's left and bottom edges, its bottom-left corner
+  rounded to match. Focus rings are drawn inset (see The screen). No
+  chevron or other menu button on any card's bar (after Trakt's cards;
+  maintainer decision, 2026-11-10): the check is the only way in to
+  marking, and opens its own menu. Today's contents:
+  - The check, one look everywhere (`stripCheck` in `#lib/strip.js`),
+    by state (`checkState` in `#lib/watched.js` where progress applies;
+    episode cards use only the first and last):
+
+    | State | Look | What it does |
+    | --- | --- | --- |
+    | Not watched | a check in `on-screen-muted` on the bar | opens the when-choice |
+    | Partly watched (a season) | `watched-part` fill, the check in `on-watched-part` | opens Watch remaining, date choices, and confirmed Remove all plays |
+    | All watched | solid `watched`, the check in `surface` | a button opening the shared removal menu (Remove all plays with confirmation, Keep it, and another watch; episode cards also offer Only this play) (`watched-hover` on hover and while open) |
+
+    A not or partly watched check fills `watched` on hover (what it's
+    about to do); while its menu is open it's a neutral lift (`on-screen`
+    at 15%, the check in `on-screen`), so it never looks watched before
+    it is. Off, it's faded by colour (40%, or the tint at 50%), not by
+    opacity, so its focus ring stays full strength. Contrast of each state
+    is in the palette's table.
+  - History's check (`WatchedCheck`): a filled `watched` square with a check
     (`text-surface`). Hover, keyboard focus, and an open menu turn it
     `watched-hover`; it stays a check. Its name is "Breaking Bad S01E02:
-    watched. History options".
-  - Watchlist: shown greyed out (`on-screen-muted` at 40%, `aria-disabled`,
-    not-allowed cursor, the reason in its name and tooltip) until slice 3
-    builds it; then it fills `listed` when on the list.
-  - Rating: a filled heart in `on-screen-accent` and TMDB's vote average
-    as a percentage (`tmdbPercent`, 12 px 600 `on-screen`), labelled "TMDB
-    rating 67%" for screen readers. Display only; hidden with no votes.
+    watched. History options", and it opens the history menu (below).
+  - Watchlist (`StripWatchlist`): shown greyed out (`on-screen-muted` at
+    40%, `aria-disabled`, not-allowed cursor, the reason in its name and
+    tooltip) until slice 3 builds it; then it fills `listed` when on the
+    list.
+  - Rating (`StripRating`): a filled heart in `on-screen-accent` and
+    TMDB's vote average as a percentage (`tmdbPercent`, 12 px 600
+    `on-screen`), 8 px from the right edge, labelled "TMDB rating 67%"
+    for screen readers. Display only; hidden with no votes.
+- **A menu in the bar** (the check's when-choice, a disclosure that isn't
+  in the top layer) lifts its card over its neighbours while open
+  (`relative isolate`, `z-20` while a descendant is expanded, still under the sticky header), so the next card can't cover
+  it.
+- **Tooltip** (`tooltip`): the link's `title`, when the caption alone
+  isn't the full name (a season card's "Breaking Bad – Season 1").
+- **Progress** (`progress`, 0 to 1; a show's season cards): a 4 px bar
+  joined under the poster, `watched` on a `line` track, decoration (the
+  caption says it in words), partly filled for a partly watched season
+  and full for a finished one, as on Trakt's season cards. Above the bar
+  when a card has both.
 - **Source chip:** the screen's chip style (`screen` at 80%, 20% white border,
   11 px 600 `on-screen`), hidden from screen readers; the caption carries
   "recorded by Plex" as visually hidden text instead.
@@ -479,8 +825,9 @@ focus on open and return, arrow keys over `data-item` rows, closing when
 focus leaves, an optional title and × header (the history menu has one;
 without it the dialog is named by its `label`), an error `Notice` at its
 foot, and
-the shared rows (`menuItem`, the trash icon, the "Remove all plays"
-placeholder, "Keep it") as snippets. They are
+the shared rows (`menuItem`, the trash icon, "Keep it") as snippets.
+`RemoveAllPlays` supplies the destructive row and its `InlineConfirm` for
+history, plays, progress, and card menus. They are
 placed in script next to the check (`placeNear` in `#lib/anchor.js`):
 inside the viewport with an 8 px margin and never over the sticky header
 (it's marked `data-app-header`; `coveredTop()` reads its bottom edge), and
@@ -507,9 +854,10 @@ would override the hidden state); style an inner wrapper.
   grows. Contents:
   - "Remove from history?" (14 px 600) and a × close button.
   - "Only this play" in `danger` with a trash icon: removes this watch.
-  - "Remove all plays", trash icon, `muted` with "Coming in a later
-    update" under it: a placeholder (`aria-disabled`, described by that
-    line) until the endpoint exists.
+  - "Remove all plays", trash icon, `danger`: opens an `InlineConfirm`
+    naming the title and warning that every play will be permanently
+    removed. Cancel returns focus to the row; errors stay in the confirm.
+    Success refreshes history/progress and toasts "Removed 3 plays of …".
   - "Keep it" with a ×: closes.
   - A hairline, then "Add another play" (plus in a circle), a disclosure
     that opens the when-choice (`WhenChoices`, the same options as the
@@ -548,9 +896,11 @@ would override the hidden state); style an inner wrapper.
   content, plus "Searching…" in the live count. Don't blank existing
   results while refreshing; dim them to 60%.
 - **Pending (episodes still being fetched):** a line with a spinner,
-  "Fetching episodes from TMDB…", over skeleton rows; poll every 3 s for
-  up to 2 minutes (`#lib/poll.js`), then "TMDB hasn't sent this season's
-  episodes yet." with "Check again".
+  "Fetching episodes from TMDB…", over skeleton rows in the episode
+  card's shape; poll every 3 s for up to 2 minutes (`pollSeason` in
+  `#lib/season-poll.js`, on `#lib/poll.js`), then "TMDB hasn't sent this
+  season's episodes yet." with "Check again". Once they're in, the show
+  reloads too, so the picker and the marks are up to date.
 - **History** (`/history`): the full column. No visible page title or
   intro (the nav says where you are): a visually hidden `h1` "History"
   (also the focus target when the list empties), then the toolbar, then
@@ -592,7 +942,8 @@ would override the hidden state); style an inner wrapper.
   toast (see Toasts). Page
   load errors render `(app)/+error.svelte` inside the header and footer:
   status, a plain heading ("Title not found"), the message, and a way on
-  (Search, dashboard, or Try again).
+  (Search, dashboard, or Try again; a missing season or episode also
+  links to its show, and a missing episode to its season).
 
 ## Toasts (`Toaster`, `#lib/toast.svelte.js`)
 
