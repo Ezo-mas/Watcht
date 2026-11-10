@@ -306,3 +306,27 @@ SELECT
 FROM episodes
 WHERE season_id = sqlc.arg(season_id) AND missing_since IS NULL
 ORDER BY episode_number, tmdb_id;
+
+-- ListShowEpisodes returns the episodes of a show's visible seasons, the ones
+-- GetVisibleSeason picks, by season number, then episode number. The show is
+-- the outer table, so a show that isn't stored has no rows. Otherwise each
+-- visible season gives one row per episode, or one row with NULL episode
+-- columns when it has none stored. A show with no visible season gives one
+-- row with NULL season columns. episodes_updated_at is NULL while a visible
+-- season is pending.
+-- name: ListShowEpisodes :many
+SELECT
+    seasons.id AS season_id, seasons.episodes_updated_at,
+    episodes.tmdb_id, episodes.season_number, episodes.episode_number,
+    episodes.name, episodes.overview, episodes.still_path, episodes.air_date,
+    episodes.runtime, episodes.vote_average, episodes.imdb_id, episodes.tvdb_id
+FROM shows
+LEFT JOIN seasons ON seasons.show_id = shows.id
+    AND seasons.missing_since IS NULL AND seasons.not_found_since IS NULL
+    AND seasons.tmdb_id = (
+        SELECT MIN(sibling.tmdb_id) FROM seasons AS sibling
+        WHERE sibling.show_id = shows.id AND sibling.season_number = seasons.season_number
+            AND sibling.missing_since IS NULL AND sibling.not_found_since IS NULL)
+LEFT JOIN episodes ON episodes.season_id = seasons.id AND episodes.missing_since IS NULL
+WHERE shows.tmdb_id = sqlc.arg(show_tmdb_id)
+ORDER BY seasons.season_number, episodes.episode_number, episodes.tmdb_id;

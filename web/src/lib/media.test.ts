@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	defaultSeason,
 	episodeCode,
 	formatRuntime,
 	formatScore,
@@ -9,6 +8,7 @@ import {
 	parseSeasonParam,
 	seasonLabel,
 	titleLinks,
+	tvPartLinks,
 	tmdbPercent,
 	yearOf
 } from './media';
@@ -55,14 +55,6 @@ describe('media helpers', () => {
 		expect(seasonLabel(2)).toBe('Season 2');
 	});
 
-	it('opens on the first regular season, else specials', () => {
-		const s = (...n: number[]) => n.map((season_number) => ({ season_number }));
-		expect(defaultSeason(s(0, 1, 2))).toBe(1);
-		expect(defaultSeason(s(3, 2, 0))).toBe(2);
-		expect(defaultSeason(s(0))).toBe(0);
-		expect(defaultSeason([])).toBeNull();
-	});
-
 	it('reads the season parameter', () => {
 		expect(parseSeasonParam('0')).toBe(0);
 		expect(parseSeasonParam('12')).toBe(12);
@@ -83,6 +75,19 @@ describe('media helpers', () => {
 		]);
 		expect(titleLinks('tv', 1396, '')).toEqual([
 			{ site: 'tmdb', label: 'TMDB', href: 'https://www.themoviedb.org/tv/1396' }
+		]);
+	});
+
+	it('links a season or an episode to its TMDB page', () => {
+		expect(tvPartLinks(1396, 1)).toEqual([
+			{ site: 'tmdb', label: 'TMDB', href: 'https://www.themoviedb.org/tv/1396/season/1' }
+		]);
+		expect(tvPartLinks(1396, 0, 3)).toEqual([
+			{
+				site: 'tmdb',
+				label: 'TMDB',
+				href: 'https://www.themoviedb.org/tv/1396/season/0/episode/3'
+			}
 		]);
 	});
 });

@@ -15,9 +15,14 @@
 
 	// Title pages start with a full-width hero, so they lay out their own
 	// width; every other page gets the usual centred column.
-	const fullBleed = $derived(
-		!page.error && (page.route.id === '/(app)/movies/[id]' || page.route.id === '/(app)/shows/[id]')
-	);
+	const titleRoutes = new Set([
+		'/(app)/movies/[id]',
+		'/(app)/shows/[id]',
+		'/(app)/shows/[id]/seasons/[n]',
+		'/(app)/shows/[id]/seasons/all',
+		'/(app)/shows/[id]/seasons/[n]/episodes/[e]'
+	]);
+	const fullBleed = $derived(!page.error && titleRoutes.has(page.route.id ?? ''));
 
 	const navLinks = [{ href: resolve('/(app)/history'), label: 'History' }];
 

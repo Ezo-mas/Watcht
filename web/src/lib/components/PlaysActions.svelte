@@ -1,35 +1,56 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { ApiError } from '#lib/api/client.js';
-	import { markMovie, movieWatches, removeWatch } from '#lib/api/tracking.js';
-	import type { MarkWhen, Movie, Watch } from '#lib/api/types.js';
-	import Button from '#lib/components/Button.svelte';
-	import MarkButton from '#lib/components/MarkButton.svelte';
-	import Notice from '#lib/components/Notice.svelte';
-	import PlaceholderActions from '#lib/components/PlaceholderActions.svelte';
-	import PlaysButton from '#lib/components/PlaysButton.svelte';
+	import { removeWatch } from '#lib/api/tracking.js';
+	import type { MarkResult, MarkWhen, Watch } from '#lib/api/types.js';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
 	import { formatWatch } from '#lib/format.js';
 	import { latestOnly } from '#lib/latest.js';
 	import { toast } from '#lib/toast.svelte.js';
-	import { releaseOption } from '#lib/when.js';
+	import type { ReleaseOption } from '#lib/when.js';
+	import Button from './Button.svelte';
+	import MarkButton from './MarkButton.svelte';
+	import Notice from './Notice.svelte';
+	import PlaceholderActions from './PlaceholderActions.svelte';
+	import PlaysButton from './PlaysButton.svelte';
 
 	interface Props {
-		movie: Movie;
-		/** The user's watches of it, newest first (from the page load); null if they failed to load. */
+		/** The title's name, for labels ("The Matrix", "Breaking Bad S01E22"). */
+		title: string;
+		/** What it is, for the load error ("movie", "episode"). */
+		kind: string;
+		/** Ids for the two buttons, so focus can move between them: `mark-{idBase}` and `{idBase}-plays`. */
+		idBase: string;
+		/** The when-choice's release or air date option. */
+		release: ReleaseOption;
+		/** The user's plays of it, newest first (from the page load); null if they failed to load. */
 		watches: Watch[] | null;
 		/** Why they failed to load. */
 		watchesError: string;
+		/** Loads the plays again. */
+		load: () => Promise<Watch[]>;
+		/** Records a play. */
+		mark: (when: MarkWhen) => Promise<MarkResult>;
+		removeAll: () => Promise<{ removed: number }>;
 	}
 
-	let { movie, watches, watchesError }: Props = $props();
+	let {
+		title,
+		kind,
+		idBase,
+		release,
+		watches,
+		watchesError,
+		load,
+		mark: record,
+		removeAll
+	}: Props = $props();
 
 	// The page's list until a mark or removal reloads it; null while it
 	// can't be loaded.
 	let list = $derived(watches);
 	let loadProblem = $derived(watchesError);
 	let retrying = $state(false);
-	const release = $derived(releaseOption('Release date', movie.release_date, new Date()));
 
 	// Only the newest reload may set the list, so a slow earlier answer
 	// can't bring back a removed watch or hide a new one.
@@ -37,7 +58,7 @@
 
 	/** Reloads the list; throws if that fails. */
 	async function reload() {
-		const res = await track(movieWatches(movie.tmdb_id));
+		const res = await track(load());
 		if (!res.current) return;
 		list = res.value;
 		loadProblem = '';
@@ -61,7 +82,7 @@
 		let merged: number | null;
 		let at: string;
 		try {
-			const res = await markMovie(movie.tmdb_id, when);
+			const res = await record(when);
 			merged = res.merged_into;
 			at = formatWatch(res.watch);
 		} catch (e) {
@@ -118,35 +139,57 @@
 		return '';
 	}
 
+	async function removeEveryPlay(): Promise<string> {
+		let removed: number;
+		try {
+			({ removed } = await removeAll());
+		} catch (e) {
+			return errorMessage(e, trackingMessages);
+		}
+		try {
+			await reload();
+		} catch {
+			list = [];
+			toast.error('Removed, but your plays could not be reloaded. Reload the page to check them.');
+		}
+		toast.success(`Removed ${removed} ${removed === 1 ? 'play' : 'plays'} of ${title}.`);
+		if (list?.length === 0) {
+			await tick();
+			document.getElementById(markId)?.focus();
+		}
+		return '';
+	}
+
 	// Where focus goes when one button replaces the other (the first play
 	// added, the last one removed), so it isn't lost with the old button.
-	const markId = 'mark-movie';
-	const playsId = 'movie-plays';
+	const markId = $derived(`mark-${idBase}`);
+	const playsId = $derived(`${idBase}-plays`);
 </script>
 
 <!--
-	The action column: one split button that states and changes the
-	movie's watched state, then the actions still to come.
+	The action column of a movie or an episode: one split button that
+	states and changes its watched state, then the actions still to come.
 	- Not watched (or the plays can't be loaded): "Mark as watched" marks
 	  it just now; the + chooses when.
 	- Watched: the play count and latest play (PlaysButton); it opens the
 	  plays menu (remove one, view all), and the + adds another play.
 -->
-<section aria-label="Track {movie.title}" class="flex flex-col">
+<section aria-label="Track {title}" class="flex flex-col">
 	{#if list && list.length > 0}
 		<PlaysButton
 			id={playsId}
-			title={movie.title}
+			{title}
 			plays={list}
 			{release}
 			onadd={mark}
 			onremove={remove}
+			onremoveall={removeEveryPlay}
 		/>
 	{:else}
 		<MarkButton
 			id={markId}
 			label="Mark as watched"
-			menuLabel="Choose when you watched {movie.title}"
+			menuLabel="Choose when you watched {title}"
 			menuIcon="plus"
 			onmark={mark}
 			{release}
@@ -155,7 +198,7 @@
 
 	{#if list === null}
 		<div class="mt-3 flex flex-col items-start gap-2">
-			<Notice tone="error" message="Couldn't load your plays of this movie: {loadProblem}" />
+			<Notice tone="error" message="Couldn't load your plays of this {kind}: {loadProblem}" />
 			<Button variant="quiet" busy={retrying} onclick={retry}>Try again</Button>
 		</div>
 	{/if}

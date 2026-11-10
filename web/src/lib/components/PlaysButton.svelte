@@ -7,12 +7,9 @@
 	import type { ReleaseOption } from '#lib/when.js';
 	import Badge from './Badge.svelte';
 	import InlineConfirm from './InlineConfirm.svelte';
-	import MenuPopover, {
-		menuIcon,
-		menuItem,
-		removeAllPlaceholder,
-		trashIcon
-	} from './MenuPopover.svelte';
+	import MenuPopover, { menuIcon, menuItem, trashIcon } from './MenuPopover.svelte';
+	import RemoveAllPlays from './RemoveAllPlays.svelte';
+	import WhenChoices from './WhenChoices.svelte';
 	import WhenMenu from './WhenMenu.svelte';
 
 	interface Props {
@@ -31,17 +28,17 @@
 		 * list), or the message to show in the confirm.
 		 */
 		onremove: (watch: Watch) => Promise<string>;
+		onremoveall: () => Promise<string>;
 	}
 
-	let { id, title, plays, release, onadd, onremove }: Props = $props();
+	let { id, title, plays, release, onadd, onremove, onremoveall }: Props = $props();
 
 	// The watched state of the action column, after classic Trakt's play
 	// button: a sage split button. The main part shows the play count and
 	// the latest play and opens the plays menu; the + adds another play
 	// (the when-choice). The menu is the shared MenuPopover shell, like the
 	// history card's: every play (each removable after a confirm) in a list
-	// that scrolls past about five rows, then "Remove all plays" (a
-	// placeholder) and "View all plays" fixed under it. No header: the
+	// that scrolls past about five rows, then "Remove all plays" (confirmed inline), "View all plays", and "Add another play" under it. No header: the
 	// button already says how many plays there are, and the dialog is
 	// named "Plays of …". Esc, a click outside, focus leaving, or the
 	// button itself close it.
@@ -51,6 +48,8 @@
 	let menu = $state<MenuPopover>();
 	let menuOpen = $state(false);
 	let adding = $state(false);
+	let choosingWhen = $state(false);
+	let whenBox = $state<HTMLElement>();
 
 	const latest = $derived(plays[0]);
 	const count = $derived(plays.length);
@@ -58,7 +57,7 @@
 	// The + stays enabled while a play is added (a disabled button would
 	// drop the focus WhenMenu returns to it); a second choice is ignored.
 	async function add(when: MarkWhen) {
-		if (adding) return;
+		if (adding || removeBusy || removeAllBusy) return;
 		adding = true;
 		try {
 			await onadd(when);
@@ -71,10 +70,11 @@
 
 	let confirming = $state<number | null>(null);
 	let removeBusy = $state(false);
+	let removeAllBusy = $state(false);
 	let removeError = $state('');
 
 	function askRemove(watch: Watch) {
-		if (removeBusy) return;
+		if (adding || removeBusy || removeAllBusy) return;
 		confirming = confirming === watch.id ? null : watch.id;
 		removeError = '';
 	}
@@ -88,6 +88,7 @@
 	}
 
 	async function remove(watch: Watch) {
+		if (adding || removeBusy || removeAllBusy) return;
 		const at = plays.findIndex((w) => w.id === watch.id);
 		removeBusy = true;
 		removeError = '';
@@ -108,8 +109,24 @@
 		(target ?? menu?.element())?.focus();
 	}
 
+	async function showWhen() {
+		if (adding || removeBusy || removeAllBusy) return;
+		confirming = null;
+		removeError = '';
+		choosingWhen = true;
+		await tick();
+		whenBox?.querySelector<HTMLButtonElement>('button')?.focus();
+	}
+
+	function chooseWhen(when: MarkWhen) {
+		if (adding || removeBusy || removeAllBusy) return;
+		menu?.close();
+		void add(when);
+	}
+
 	function onMenuChange(open: boolean) {
 		if (!open) {
+			choosingWhen = false;
 			confirming = null;
 			removeError = '';
 		}
@@ -162,7 +179,7 @@
 		onmark={add}
 		{release}
 		icon="plus"
-		working={adding}
+		working={adding || removeBusy || removeAllBusy}
 		class="h-12 w-12 rounded-r-md border-l border-surface/30 bg-watched text-surface hover:bg-watched-hover"
 	/>
 </div>
@@ -180,12 +197,13 @@
 		Every play, newest first. Past about five rows the list scrolls
 		inside the menu (never the page behind it), so the menu stays inside
 		the window; focus moving to a row (arrow keys, a confirm) scrolls it
-		into view. The rows exist while the menu is closed too, hidden with
+		into view. The trash buttons keep the list's 12 px right padding
+		clear, so a scrollbar (an overlay one too) never covers them. The rows exist while the menu is closed too, hidden with
 		the popover.
 	-->
 	<ul
 		aria-label="Plays"
-		class="max-h-[min(17rem,calc(100dvh-13rem))] divide-y divide-line overflow-y-auto overscroll-contain px-3 py-1 sm:max-h-[min(14rem,calc(100dvh-13rem))]"
+		class="max-h-[min(17rem,calc(100dvh-13rem))] [scrollbar-width:thin] divide-y divide-line overflow-y-auto overscroll-contain px-3 py-1 sm:max-h-[min(14rem,calc(100dvh-13rem))]"
 	>
 		{#each plays as watch (watch.id)}
 			{@const source = sourceLabel(watch.source)}
@@ -204,11 +222,13 @@
 						id="{uid}-remove-{watch.id}"
 						aria-label="Remove the play from {formatWatch(watch)}"
 						aria-expanded={confirming === watch.id}
+						aria-disabled={adding || removeBusy || removeAllBusy || undefined}
 						title="Remove from history"
 						onclick={() => askRemove(watch)}
-						class="-mr-2 grid size-10 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger focus-visible:-outline-offset-2 sm:size-8"
+						class="flex h-10 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-muted transition-colors hover:bg-raised hover:text-danger focus-visible:-outline-offset-2 sm:h-8"
 					>
 						{@render trashIcon()}
+						Remove
 					</button>
 				</div>
 				{#if confirming === watch.id}
@@ -232,7 +252,14 @@
 
 	<!-- Fixed under the list, not inside it. -->
 	<div class="border-t border-line py-1">
-		{@render removeAllPlaceholder(`${uid}-all`)}
+		<RemoveAllPlays
+			{title}
+			onremove={onremoveall}
+			disabled={adding || removeBusy}
+			bind:busy={removeAllBusy}
+			open={menuOpen}
+			ondone={() => menu?.close()}
+		/>
 		<!-- History has no filters yet, so this is the whole history, and it says so. -->
 		<a href={resolve('/(app)/history')} data-item class={[menuItem, 'hover:bg-raised']}>
 			<svg
@@ -251,5 +278,34 @@
 				<span class="block text-xs text-muted">Your whole history; filters come later</span>
 			</span>
 		</a>
+	</div>
+	<hr class="border-line" />
+	<div class="py-1">
+		<button
+			type="button"
+			data-item
+			aria-expanded={choosingWhen}
+			aria-controls="{uid}-when"
+			aria-disabled={adding || removeBusy || removeAllBusy || undefined}
+			onclick={showWhen}
+			class={[menuItem, 'hover:bg-raised']}
+		>
+			<svg
+				aria-hidden="true"
+				viewBox="0 0 16 16"
+				class={menuIcon}
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.6"
+				stroke-linecap="round"
+				><circle cx="8" cy="8" r="6.25" /><path d="M8 5.25v5.5M5.25 8h5.5" /></svg
+			>
+			Add another play
+		</button>
+		<div bind:this={whenBox} id="{uid}-when" hidden={!choosingWhen} class="border-t border-line">
+			{#if choosingWhen}
+				<WhenChoices onchoose={chooseWhen} {release} busy={adding || removeBusy || removeAllBusy} />
+			{/if}
+		</div>
 	</div>
 </MenuPopover>

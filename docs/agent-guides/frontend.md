@@ -143,18 +143,30 @@ in `src/lib/components/`: forms and pages (`Button`, `Field`, `CardPage`,
 `Panel`, `Notice`, `InlineConfirm`, `Wordmark`, `Kbd`; action results go
 to `toast` from `#lib/toast.svelte.js`, which the layout's `Toaster`
 shows), catalog pieces
-(`Artwork`, `Badge`, `Facts`, `EpisodeRow`), title pages (`TitlePage`
-with its `RatingsBand`, `SectionNav`, and `ExternalLinks`, whose marks are
-`SourceMark`; the sections under the overview, `TitleSection` with
-`StatsSection`, `PeopleSection`, `VideosSection`, and
-`RecommendationsSection`, placeholders built from `PlaceholderFilter` and
-`PlaceholderRow`), tracking
+(`Artwork`, `Badge`, `Facts`, `EpisodeRow`, a season's episode card and
+text; `EpisodesFetching`, an episode list's pending state; `ListControls`,
+the placeholder sort and filter row over season grids and episode
+lists), title pages (`TitlePage`, with the previous and next arrows on
+its hero, and `RatingsBand`, `SectionNav`, and `ExternalLinks`, whose marks are
+`SourceMark`; on season and episode pages `Breadcrumbs`, the pill above
+the title, and `PickerStrip`, the sibling seasons or episodes under the
+hero, whose season items and arrow links come from `#lib/season-nav.js`;
+the sections under the overview, `TitleSection` with
+`StatsSection`, `PeopleSection`, `VideosSection`,
+`RecommendationsSection`, and `RecentEpisodesSection`, placeholders built
+from `PlaceholderFilter` and `PlaceholderRow`), tracking
 (`MarkButton` with its `WhenMenu`, whose options are `WhenChoices`;
-`PlaysButton`, the movie action column's watched state with its plays
-menu, and `PlaceholderActions` under it; `MenuPopover`, the popover menu
-shell the plays menu and `WatchedCheck` share;
+`PlaysActions`, the movie and episode action column, with `PlaysButton`,
+its watched state and plays menu; `ProgressButton`, the show and season
+action column's watched state; `ShowActions`, the show's action column
+on the show and All episodes pages; `PlaceholderActions` under both;
+`MenuPopover`, the popover menu shell the plays and progress menus and
+`WatchedCheck` share;
 `PosterCard`, the poster, action bar, and caption card that `/history`
-uses and the watchlist and dashboard will reuse; `WatchedCheck`, the
+and a show's seasons use and the watchlist and dashboard will reuse; its
+bar's classes are in `#lib/strip.js`, shared with the episode card's,
+and `StripWatchlist` and `StripRating` are the bar's watchlist
+placeholder and TMDB score; `WatchedCheck`, the
 card's watched check with its tooltip and remove-or-add menu, built on
 the Popover API and placed with `placeNear` from `#lib/anchor.js`;
 `/history`'s own placeholder toolbar is `HistoryToolbar` next to its page),

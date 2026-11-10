@@ -34,7 +34,8 @@
 <!--
 	The scores along the bottom of the hero, after classic Trakt: each
 	source's mark and its score, nothing else; the vote count is in the
-	tooltip and in what screen readers hear. TMDB today; MDBList's sources
+	tooltip and in what screen readers hear (with no count, as for an
+	episode, the tooltip is just the score). TMDB today; MDBList's sources
 	join in M8. Sits on the screen, so it uses the screen's colours in both
 	themes.
 -->
@@ -47,7 +48,7 @@
 			class="flex items-center gap-2.5 whitespace-nowrap"
 			title={rating.votes !== undefined
 				? `${rating.votes.toLocaleString('en')} votes on ${rating.label}`
-				: undefined}
+				: `${rating.label} rating ${rating.score}`}
 		>
 			<SourceMark site={rating.site} tone="screen" />
 			<span class="sr-only">{spoken(rating)}</span>

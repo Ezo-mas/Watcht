@@ -42,6 +42,12 @@
 	--color-watched: #4f7a3c;
 	/* A hovered or focused watched check: a darker sage. */
 	--color-watched-hover: #3f6531;
+	/*
+	 * A partly watched check on the strip (a season card): a sage tint fill
+	 * with a light sage check on it (5.5:1; the strip is dark in both themes).
+	 */
+	--color-watched-part: #2c4428;
+	--color-on-watched-part: #a3c48f;
 	--color-listed: #2b6f86;
 	/* TMDB's logo: their rules allow pure black or white (or brand colours). */
 	--color-tmdb-logo: #000000;
@@ -80,6 +86,8 @@
 		--color-ok: #8fb07c;
 		--color-watched: #8fb07c;
 		--color-watched-hover: #76985f;
+		--color-watched-part: #435941;
+		--color-on-watched-part: #b5d3a1;
 		--color-listed: #8cc7d9;
 		--color-tmdb-logo: #ffffff;
 		--color-strip: #223428;

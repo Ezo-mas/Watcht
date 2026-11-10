@@ -30,18 +30,30 @@ export function watchedById(list: EpisodeWatched[]): Map<number, EpisodeWatched>
 	return new Map(list.map((e) => [e.tmdb_id, e]));
 }
 
+/** Episodes watched of a total, and every play of them (rewatches too). */
+export interface Progress {
+	watched: number;
+	total: number;
+	plays: number;
+}
+
 /**
- * How many of a season's listed episodes are watched. Watches of episodes
- * TMDB no longer lists for it don't count.
+ * How many of a season's listed episodes are watched, and their plays.
+ * Watches of episodes TMDB no longer lists for it don't count.
  */
 export function seasonProgress(
 	episodes: Pick<Episode, 'tmdb_id'>[],
 	watched: Map<number, EpisodeWatched>
-): { watched: number; total: number } {
-	return {
-		watched: episodes.filter((e) => watched.has(e.tmdb_id)).length,
-		total: episodes.length
-	};
+): Progress {
+	let count = 0;
+	let plays = 0;
+	for (const e of episodes) {
+		const w = watched.get(e.tmdb_id);
+		if (!w) continue;
+		count++;
+		plays += w.plays;
+	}
+	return { watched: count, total: episodes.length, plays };
 }
 
 /** Whether a season has any aired episode, so "Mark season watched" can add something. */
@@ -80,4 +92,16 @@ export function addedMessage(added: number, anyAired: boolean): string {
 			: 'Nothing added: nothing has aired yet.';
 	}
 	return `Added ${added} ${added === 1 ? 'episode' : 'episodes'} to your history.`;
+}
+
+/**
+ * A card check's state where progress applies (a season card): none
+ * watched, some, or all. Nothing to watch (a total of 0) is none. Episode
+ * cards are two-state and don't use it.
+ */
+export type CheckState = 'none' | 'some' | 'all';
+
+export function checkState(p: Pick<Progress, 'watched' | 'total'>): CheckState {
+	if (p.total <= 0 || p.watched <= 0) return 'none';
+	return p.watched >= p.total ? 'all' : 'some';
 }

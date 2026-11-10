@@ -133,9 +133,18 @@ export interface Episode {
 	still_path: string;
 	/** 300 px wide, or "" when TMDB has no image. */
 	still_url: string;
+	/** Full size, for the episode page's hero; "" when TMDB has no image. */
+	still_large_url: string;
 	air_date: string;
 	runtime: number;
 	vote_average: number;
+}
+
+/** Every listed episode of a show; null while any season is still being fetched. */
+export interface ShowEpisodes {
+	show_tmdb_id: number;
+	episodes_pending: boolean;
+	episodes: Episode[] | null;
 }
 
 export interface SeasonDetails {
@@ -175,6 +184,8 @@ export interface MarkResult {
 
 export interface EpisodeWatched {
 	tmdb_id: number;
+	/** The episode's season, for per-season progress; 0 is specials. */
+	season_number: number;
 	plays: number;
 	last_watched_at: string;
 	/** As Watch.watched_on, for the latest watch. */

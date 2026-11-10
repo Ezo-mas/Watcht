@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	addedMessage,
 	anyAired,
+	checkState,
 	hasAired,
 	playsLabel,
 	releaseTime,
@@ -40,19 +41,37 @@ describe('hasAired', () => {
 
 describe('seasonProgress', () => {
 	const watched = watchedById([
-		{ tmdb_id: 1, plays: 2, last_watched_at: '2026-11-01T20:00:00Z', last_watched_on: null },
-		{ tmdb_id: 3, plays: 1, last_watched_at: '2026-11-02T20:00:00Z', last_watched_on: null },
+		{
+			tmdb_id: 1,
+			season_number: 1,
+			plays: 2,
+			last_watched_at: '2026-11-01T20:00:00Z',
+			last_watched_on: null
+		},
+		{
+			tmdb_id: 3,
+			season_number: 1,
+			plays: 1,
+			last_watched_at: '2026-11-02T20:00:00Z',
+			last_watched_on: null
+		},
 		// An episode TMDB no longer lists for the season.
-		{ tmdb_id: 99, plays: 1, last_watched_at: '2026-11-02T21:00:00Z', last_watched_on: null }
+		{
+			tmdb_id: 99,
+			season_number: 1,
+			plays: 1,
+			last_watched_at: '2026-11-02T21:00:00Z',
+			last_watched_on: null
+		}
 	]);
 
 	it('counts only the listed episodes', () => {
 		const episodes = [{ tmdb_id: 1 }, { tmdb_id: 2 }, { tmdb_id: 3 }, { tmdb_id: 4 }];
-		expect(seasonProgress(episodes, watched)).toEqual({ watched: 2, total: 4 });
+		expect(seasonProgress(episodes, watched)).toEqual({ watched: 2, total: 4, plays: 3 });
 	});
 
 	it('is 0 of 0 for an empty season', () => {
-		expect(seasonProgress([], watched)).toEqual({ watched: 0, total: 0 });
+		expect(seasonProgress([], watched)).toEqual({ watched: 0, total: 0, plays: 0 });
 	});
 });
 
@@ -89,5 +108,20 @@ describe('labels', () => {
 	it('says why nothing was added', () => {
 		expect(addedMessage(0, true)).toBe('Nothing added: every aired episode is already watched.');
 		expect(addedMessage(0, false)).toBe('Nothing added: nothing has aired yet.');
+	});
+});
+
+describe('checkState', () => {
+	it('is none, some, or all of the episodes watched', () => {
+		expect(checkState({ watched: 0, total: 7 })).toBe('none');
+		expect(checkState({ watched: 1, total: 7 })).toBe('some');
+		expect(checkState({ watched: 6, total: 7 })).toBe('some');
+		expect(checkState({ watched: 7, total: 7 })).toBe('all');
+	});
+
+	it('treats nothing to watch as none, and never passes all', () => {
+		expect(checkState({ watched: 0, total: 0 })).toBe('none');
+		expect(checkState({ watched: 2, total: 0 })).toBe('none');
+		expect(checkState({ watched: 9, total: 7 })).toBe('all');
 	});
 });

@@ -252,8 +252,51 @@ func TestCatalogShowAndSeason(t *testing.T) {
 	}
 }
 
+func TestCatalogShowEpisodes(t *testing.T) {
+	s := newCatalogServer(t)
+	catalogDecode[map[string]any](t, s.get("/api/v1/shows/1396"))
+	countRows := func(query string) int {
+		t.Helper()
+		var n int
+		if err := s.db.Read.QueryRow(query).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := s.fixture.count()
+	queued := countRows("SELECT count(*) FROM jobs")
+	pending := catalogDecode[showEpisodesJSON](t, s.get("/api/v1/shows/1396/episodes"))
+	if !pending.EpisodesPending || pending.Episodes != nil || pending.ShowTMDBID != 1396 {
+		t.Fatalf("pending: %+v", pending)
+	}
+	if countRows("SELECT count(*) FROM jobs") != queued || s.fixture.count() != before {
+		t.Fatal("reading a pending show queued work or called TMDB")
+	}
+
+	// An unstored show is a 404, as for the season endpoint, and isn't fetched.
+	before = s.fixture.count()
+	for _, path := range []string{"/api/v1/shows/999/episodes", "/api/v1/shows/abc/episodes", "/api/v1/shows/0/episodes", "/api/v1/shows/-1/episodes", "/api/v1/shows/+1396/episodes", "/api/v1/shows/2147483648/episodes"} {
+		catalogError(t, s.get(path), 404, "not_found")
+	}
+	if s.fixture.count() != before {
+		t.Fatal("unknown or bad show IDs reached TMDB")
+	}
+
+	if err := s.service.SyncShow(context.Background(), 1396); err != nil {
+		t.Fatal(err)
+	}
+	// Specials come first. The fixtures have no seasons 2 to 5, so the sync
+	// hides them and they are left out.
+	episodes := append(catalogEpisodeFields(t, "tv_1396_season_0.json"), catalogEpisodeFields(t, "tv_1396_season_1.json")...)
+	assertCatalogFields(t, s.get("/api/v1/shows/1396/episodes"), "", map[string]any{
+		"show_tmdb_id":     1396,
+		"episodes_pending": false,
+		"episodes":         episodes,
+	})
+}
+
 func TestCatalogAuthenticationAndConfiguration(t *testing.T) {
-	paths := []string{"/api/v1/search?q=matrix", "/api/v1/movies/603", "/api/v1/shows/1396", "/api/v1/shows/1396/seasons/1"}
+	paths := []string{"/api/v1/search?q=matrix", "/api/v1/movies/603", "/api/v1/shows/1396", "/api/v1/shows/1396/seasons/1", "/api/v1/shows/1396/episodes"}
 	s := newCatalogServer(t)
 	for _, path := range paths {
 		catalogError(t, s.do(request{method: "GET", path: path}), 401, "unauthenticated")
@@ -358,12 +401,12 @@ func TestCatalogViewFailureStillReturnsPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.h = h
-	for _, path := range []string{"/api/v1/movies/603", "/api/v1/shows/1396", "/api/v1/shows/1396/seasons/1"} {
+	for _, path := range []string{"/api/v1/movies/603", "/api/v1/shows/1396", "/api/v1/shows/1396/seasons/1", "/api/v1/shows/1396/episodes"} {
 		if rec := s.get(path); rec.Code != 200 {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
 	}
-	if strings.Count(s.logs.String(), "level=WARN") != 3 {
+	if strings.Count(s.logs.String(), "level=WARN") != 4 {
 		t.Fatalf("view failure warnings: %s", s.logs)
 	}
 }

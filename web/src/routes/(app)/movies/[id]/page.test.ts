@@ -212,7 +212,8 @@ describe('movie page', () => {
 		expect(body.indexOf('View all plays', listEnd)).toBeGreaterThan(listEnd);
 		expect(list).not.toContain('Remove all plays');
 		const removeAll = buttons(body).find((b) => b.tag.includes('aria-label="Remove all plays"'));
-		expect(removeAll?.tag).toContain('aria-disabled="true"');
+		expect(removeAll?.tag).toContain('aria-expanded="false"');
+		expect(removeAll?.tag).not.toContain('aria-disabled');
 		expect(body).toMatch(/<a href="\/history"[^>]*data-item/);
 		expect(body).not.toContain('Keep it');
 		expect(body).not.toContain('The newest');
@@ -306,7 +307,7 @@ describe('movie page', () => {
 		expect(body).toContain('Cast and crew are coming in a later update.');
 		expect(body).toContain('Trailers and clips are coming in a later update.');
 		expect(body).toContain('Recommendations are coming in a later update.');
-		// The section filters (the plays menu's own placeholder is tested above).
+		// The section filters.
 		const filters = tags(body.slice(body.indexOf('id="stats"')), 'button').filter(
 			(b) => b.includes('aria-disabled="true"') && b.includes('aria-label=')
 		);

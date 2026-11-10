@@ -30,9 +30,6 @@
 						class="group relative flex items-center gap-2 border-b border-line py-2.5 pr-0.5 text-[0.6875rem] font-semibold tracking-wider text-muted uppercase transition-colors before:absolute before:inset-y-1.5 before:-left-3 before:w-0.5 before:rounded-full hover:text-ink focus-visible:-outline-offset-2 aria-[current=true]:text-ink aria-[current=true]:before:bg-accent"
 					>
 						<span class="min-w-0 flex-1 truncate">{section.label}</span>
-						{#if section.count !== undefined}
-							<span class="font-medium tabular-nums">{section.count}</span>
-						{/if}
 						<svg
 							aria-hidden="true"
 							viewBox="0 0 16 16"
@@ -58,9 +55,6 @@
 						class="flex h-10 items-center gap-1.5 rounded-md border border-line bg-surface px-3 text-sm font-medium whitespace-nowrap text-muted transition-colors hover:border-line-strong hover:text-ink aria-[current=true]:border-accent aria-[current=true]:bg-accent/15 aria-[current=true]:text-accent-text"
 					>
 						{section.label}
-						{#if section.count !== undefined}
-							<span class="tabular-nums">{section.count}</span>
-						{/if}
 					</a>
 				</li>
 			{/each}

@@ -1,10 +1,19 @@
 <script lang="ts" module>
+	import type { ResolvedPathname } from '$app/types';
+
 	export interface PageSection {
 		/** The element ID the link scrolls to. */
 		id: string;
+		/** With its count first when it has one ("7 Seasons", "22 Episodes"; countLabel). */
 		label: string;
-		/** A count shown at the end of the row (episodes, seasons). */
-		count?: number;
+	}
+
+	/** A previous or next page, as an arrow on the hero's side. */
+	export interface HeroLink {
+		/** A resolve()d path. */
+		href: ResolvedPathname;
+		/** Its accessible name and tooltip ("Next episode: S01E04 Cancer Man"). */
+		label: string;
 	}
 </script>
 
@@ -19,6 +28,13 @@
 
 	interface Props {
 		title: string;
+		/** An episode's code ("S01E22"), shown before the title in the codes' accent. */
+		code?: string;
+		/**
+		 * The full name, for the poster placeholder and the link labels, when
+		 * the title alone is ambiguous ("Breaking Bad Season 1"); default the title.
+		 */
+		name?: string;
 		year: string;
 		posterUrl: string;
 		backdropUrl: string;
@@ -31,6 +47,16 @@
 		 * first is the overview.
 		 */
 		sections: PageSection[];
+		/** Above the title on the hero: the breadcrumb pill (Breadcrumbs). */
+		crumbs?: Snippet;
+		/** The previous and next season or episode, as arrows on the hero's sides; none at the ends. */
+		prev?: HeroLink;
+		next?: HeroLink;
+		/**
+		 * Right under the hero, above the facts: the strip of sibling pages
+		 * (PickerStrip), as wide as the facts and actions together.
+		 */
+		picker?: Snippet;
 		/** Label/value facts beside the poster (a Facts list). */
 		facts: Snippet;
 		/** Under the facts, beside the actions: tagline, overview, seasons. */
@@ -42,20 +68,32 @@
 		actions?: Snippet;
 		/** Sections under everything, as wide as the overview and actions together. */
 		below?: Snippet;
+		/**
+		 * The last section, under those: the full width of the page, under
+		 * the poster column too, which stops sticking where it starts.
+		 */
+		last?: Snippet;
 	}
 
 	let {
 		title,
+		code = '',
+		name,
 		year,
 		posterUrl,
 		backdropUrl,
 		ratings,
 		links,
 		sections,
+		crumbs,
+		prev,
+		next,
+		picker,
 		facts,
 		children,
 		actions,
-		below
+		below,
+		last
 	}: Props = $props();
 
 	// The hero and the body share one grid, so the title lines up with the
@@ -69,6 +107,37 @@
 	]);
 
 	const showNav = $derived(sections.length > 1);
+	const fullName = $derived(name ?? title);
+
+	// Where each part of the body sits. With a picker it takes the first
+	// row (beside the poster, and over the actions on lg), so every other
+	// part moves down one; the poster spans the picker and the facts on
+	// phones, so the facts still sit beside it. The poster column spans
+	// every row but the last section's, which runs under it.
+	const cells = $derived(
+		picker
+			? {
+					rows: 'lg:grid-rows-[auto_auto_auto_1fr_auto_auto]',
+					aside: 'row-span-2 sm:row-span-5',
+					facts: 'row-start-2',
+					children: 'row-start-3',
+					actions: 'row-start-4 lg:row-start-2',
+					below: 'row-start-5',
+					last: 'row-start-6'
+				}
+			: {
+					rows: 'lg:grid-rows-[auto_auto_1fr_auto_auto]',
+					aside: 'sm:row-span-4',
+					facts: 'row-start-1',
+					children: 'row-start-2',
+					actions: 'row-start-3 lg:row-start-1',
+					below: 'row-start-4',
+					last: 'row-start-5'
+				}
+	);
+
+	// Breadcrumb pages align the poster with the title block, even when it wraps.
+	let titleHeight = $state(0);
 
 	// The poster column sticks 4 rem from the top; when it's taller than
 	// the window (a short laptop screen), it sticks by its bottom edge
@@ -143,11 +212,21 @@
 <article>
 	<!--
 		The hero is a dark "screen" in both themes (see DESIGN.md): the
-		backdrop, a scrim that fades to the screen colour at the bottom and
-		left, the title, and the ratings band. It starts under the
-		translucent header, so its top padding clears it.
+		backdrop in full colour, and at the bottom the title and the ratings
+		band over a short fade to the screen colour, which keeps their text
+		readable over the brightest picture (maintainer decision). It starts
+		under the translucent header, so the space above the title clears it.
+		The arrows to the previous and next season or episode sit on its
+		sides, in the middle of the picture above the title.
 	-->
-	<header class="relative isolate overflow-hidden bg-screen text-on-screen">
+	<header
+		class={[
+			'relative isolate flex flex-col overflow-hidden bg-screen text-on-screen',
+			backdropUrl
+				? 'min-h-96 sm:min-h-[32rem] lg:min-h-[min(42rem,78vh)]'
+				: 'min-h-56 sm:min-h-64 lg:min-h-72'
+		]}
+	>
 		{#if backdropUrl}
 			<img
 				src={backdropUrl}
@@ -158,14 +237,6 @@
 				referrerpolicy="no-referrer"
 				class="absolute inset-0 -z-10 size-full object-cover object-[50%_25%]"
 			/>
-			<div
-				aria-hidden="true"
-				class="absolute inset-0 -z-10 bg-linear-to-t from-screen from-2% via-screen/60 via-40% to-screen/5"
-			></div>
-			<div
-				aria-hidden="true"
-				class="absolute inset-0 -z-10 bg-linear-to-r from-screen/70 to-screen/0 to-70%"
-			></div>
 		{:else}
 			<!-- No backdrop: a quiet ember glow instead of an empty band. -->
 			<div
@@ -173,78 +244,121 @@
 				class="absolute inset-0 -z-10 bg-radial-[at_85%_0%] from-on-screen-accent/20 to-screen to-60%"
 			></div>
 		{/if}
-		<div
-			class={[
-				...grid,
-				backdropUrl ? 'pt-40 sm:pt-60 lg:pt-72 xl:pt-80' : 'pt-24 sm:pt-28 lg:pt-32',
-				ratings.length ? 'pb-4' : 'pb-6'
-			]}
-		>
-			<div class={['col-start-2 min-w-0', actions && 'lg:col-end-4']}>
-				<h1
-					class="text-2xl leading-tight font-bold tracking-tight text-balance [text-shadow:0_1px_12px_rgb(0_0_0/0.5)] sm:text-3xl lg:text-4xl"
-				>
-					{title}{#if year}&nbsp;<span class="font-normal text-on-screen-muted">{year}</span>{/if}
-				</h1>
-			</div>
+
+		<!-- The picture's free space, under the header: the arrows, centred in it. -->
+		<div class="flex flex-1 items-center justify-between gap-4 px-4 pt-12 pb-2 sm:px-6">
+			{#if prev}{@render arrow(prev, 'prev')}{:else}<span></span>{/if}
+			{#if next}{@render arrow(next, 'next')}{/if}
 		</div>
-		{#if ratings.length}
-			<div class="bg-screen/55 backdrop-blur-sm">
-				<div class={grid}>
+
+		<div>
+			{#if backdropUrl}
+				<!-- The fade's soft top edge, above the title. -->
+				<div
+					aria-hidden="true"
+					class="h-16 bg-linear-to-t from-screen/65 to-screen/0 sm:h-24"
+				></div>
+			{/if}
+			<div
+				bind:clientHeight={titleHeight}
+				class={backdropUrl && 'bg-linear-to-t from-screen/90 to-screen/65'}
+			>
+				<div class={[...grid, ratings.length ? 'pb-4' : 'pb-6']}>
 					<div class={['col-start-2 min-w-0', actions && 'lg:col-end-4']}>
-						<RatingsBand {ratings} />
+						{#if crumbs}
+							<div class="mb-2 sm:mb-3">{@render crumbs()}</div>
+						{/if}
+						<h1
+							class="text-2xl leading-tight font-bold tracking-tight text-balance [text-shadow:0_1px_12px_rgb(0_0_0/0.5)] sm:text-3xl lg:text-4xl"
+						>
+							<!-- The code stays on the title's first line. -->
+							{#if code}<span class="text-on-screen-accent tabular-nums">{code}</span
+								>&nbsp;{/if}{title}{#if year}&nbsp;<span class="font-normal text-on-screen-muted"
+									>{year}</span
+								>{/if}
+						</h1>
 					</div>
 				</div>
+				{#if ratings.length}
+					<div class={grid}>
+						<div class={['col-start-2 min-w-0', actions && 'lg:col-end-4']}>
+							<RatingsBand {ratings} />
+						</div>
+					</div>
+				{/if}
 			</div>
-		{/if}
+		</div>
 	</header>
 
 	<!--
-		Rows (lg): facts | overview | a flexible row | the sections below.
-		The poster column spans them all, so it can stay in view (sticky
-		from sm) as the page scrolls. The actions span the first three
-		rows; the flexible one takes up their extra height, so the overview
-		doesn't move down when the column grows.
+		Rows (lg): facts | overview | a flexible row | the sections below |
+		the last section. The poster column spans all but the last, so it
+		stays in view (sticky from sm) as the page scrolls, and stops where
+		the last section, as wide as the page, starts under it. The actions
+		span the first three rows; the flexible one takes up their extra
+		height, so the overview doesn't move down when the column grows.
 	-->
-	<div class={[...grid, 'pb-16 lg:grid-rows-[auto_auto_1fr_auto]']}>
-		<aside
-			aria-label="Poster and sections"
-			bind:clientHeight={asideHeight}
-			style:--stick-top="{stickTop}px"
-			class="relative z-10 col-start-1 row-start-1 -mt-20 self-start sm:sticky sm:top-(--stick-top) sm:row-span-4 sm:-mt-28 lg:-mt-40 xl:-mt-44"
+	<div class={[...grid, 'pb-16', cells.rows]}>
+		<!--
+			The poster column's own cell, spanning every row but the last
+			section's: the sticky aside inside it stops where that section
+			starts (a sticky grid item itself would be held by the whole grid).
+		-->
+		<div
+			class={[
+				'relative z-10 col-start-1 row-start-1 -mt-20 sm:-mt-28 lg:-mt-40 xl:-mt-44',
+				cells.aside
+			]}
+			style:margin-top={crumbs && titleHeight ? `-${titleHeight}px` : undefined}
 		>
-			<Artwork
-				src={posterUrl}
-				kind="poster"
-				label={title}
-				class="rounded-md shadow-[0_12px_32px_rgb(0_0_0/0.45)] ring-1 ring-black/25"
-			/>
-			{#if showNav}
-				<SectionNav
-					{sections}
-					{current}
-					onpick={pick}
-					variant="column"
-					class="mt-6 max-sm:hidden"
+			<aside
+				aria-label="Poster and sections"
+				bind:clientHeight={asideHeight}
+				style:--stick-top="{stickTop}px"
+				class="sm:sticky sm:top-(--stick-top)"
+			>
+				<Artwork
+					src={posterUrl}
+					kind="poster"
+					label={fullName}
+					class="rounded-md shadow-[0_12px_32px_rgb(0_0_0/0.45)] ring-1 ring-black/25"
 				/>
-			{/if}
-			<div class="mt-4 sm:mt-6">
-				<ExternalLinks {title} {links} />
-			</div>
-		</aside>
+				{#if showNav}
+					<SectionNav
+						{sections}
+						{current}
+						onpick={pick}
+						variant="column"
+						class="mt-6 max-sm:hidden"
+					/>
+				{/if}
+				<div class="mt-4 sm:mt-6">
+					<ExternalLinks title={fullName} {links} />
+				</div>
+			</aside>
+		</div>
 
-		<div id="overview" class="col-start-2 row-start-1 min-w-0 pt-4 sm:pt-5">
+		{#if picker}
+			<div class={['col-start-2 row-start-1 min-w-0 pt-4 sm:pt-5', actions && 'lg:col-end-4']}>
+				{@render picker()}
+			</div>
+		{/if}
+
+		<div id="overview" class={['col-start-2 min-w-0 pt-4 sm:pt-5', cells.facts]}>
 			<h2 class="sr-only">Overview</h2>
 			{@render facts()}
 		</div>
 
-		<div class="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2">
+		<div class={['col-span-2 min-w-0 sm:col-span-1 sm:col-start-2', cells.children]}>
 			{@render children()}
 		</div>
 
 		{#if actions}
 			<div
-				class="col-span-2 row-start-3 mt-8 min-w-0 sm:col-span-1 sm:col-start-2 lg:col-start-3 lg:row-span-3 lg:row-start-1 lg:mt-0 lg:self-start lg:pt-5"
+				class={[
+					'col-span-2 mt-8 min-w-0 sm:col-span-1 sm:col-start-2 lg:col-start-3 lg:row-span-3 lg:mt-0 lg:self-start lg:pt-5',
+					cells.actions
+				]}
 			>
 				{@render actions()}
 			</div>
@@ -252,19 +366,58 @@
 
 		{#if below}
 			<div
-				class="col-span-2 row-start-4 min-w-0 sm:col-span-1 sm:col-start-2 lg:col-span-2 lg:col-start-2"
+				class={[
+					'col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 lg:col-span-2 lg:col-start-2',
+					cells.below
+				]}
 			>
-				{#if showNav}
-					<SectionNav
-						{sections}
-						{current}
-						onpick={pick}
-						variant="strip"
-						class="mt-10 -mb-4 sm:hidden"
-					/>
-				{/if}
+				{@render phoneNav()}
 				{@render below()}
+			</div>
+		{/if}
+
+		{#if last}
+			<div class={['col-span-full min-w-0', cells.last]}>
+				{#if !below}{@render phoneNav()}{/if}
+				{@render last()}
 			</div>
 		{/if}
 	</div>
 </article>
+
+<!-- Phones: the section list as a strip of links, just above the first section. -->
+{#snippet phoneNav()}
+	{#if showNav}
+		<SectionNav {sections} {current} onpick={pick} variant="strip" class="mt-10 -mb-4 sm:hidden" />
+	{/if}
+{/snippet}
+
+<!--
+	A round arrow on the hero's side, after classic Trakt: the screen's
+	translucent fill (as the breadcrumb pill) so it reads over any picture,
+	and its focus ring inside it in on-screen-accent.
+-->
+{#snippet arrow(link: HeroLink, side: 'prev' | 'next')}
+	<!-- The type makes callers pass a resolve()d path; the rule can't see through props. -->
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	<a
+		href={link.href}
+		aria-label={link.label}
+		title={link.label}
+		data-sveltekit-preload-data="tap"
+		class="grid size-10 shrink-0 place-items-center rounded-full border border-on-screen/20 bg-screen/60 text-on-screen backdrop-blur-sm transition-colors hover:bg-screen/85 focus-visible:-outline-offset-4 focus-visible:outline-on-screen-accent sm:size-11"
+	>
+		<svg
+			aria-hidden="true"
+			viewBox="0 0 16 16"
+			class="size-4 sm:size-5"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			><path d={side === 'prev' ? 'M10 3.5 5.5 8l4.5 4.5' : 'M6 3.5 10.5 8 6 12.5'} /></svg
+		>
+	</a>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
+{/snippet}

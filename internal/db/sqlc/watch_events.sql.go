@@ -10,6 +10,83 @@ import (
 	"database/sql"
 )
 
+const deleteEpisodeWatches = `-- name: DeleteEpisodeWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = ?1 AND episode_id = ?2
+    AND merged_into_id IS NULL
+`
+
+type DeleteEpisodeWatchesParams struct {
+	UserID    int64
+	EpisodeID sql.NullInt64
+}
+
+func (q *Queries) DeleteEpisodeWatches(ctx context.Context, arg DeleteEpisodeWatchesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteEpisodeWatches, arg.UserID, arg.EpisodeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteMovieWatches = `-- name: DeleteMovieWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = ?1 AND movie_id = ?2
+    AND merged_into_id IS NULL
+`
+
+type DeleteMovieWatchesParams struct {
+	UserID  int64
+	MovieID sql.NullInt64
+}
+
+// DeleteMovieWatches deletes kept plays; merged events are deleted by cascade.
+func (q *Queries) DeleteMovieWatches(ctx context.Context, arg DeleteMovieWatchesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteMovieWatches, arg.UserID, arg.MovieID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteSeasonWatches = `-- name: DeleteSeasonWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = ?1 AND merged_into_id IS NULL
+    AND episode_id IN (SELECT id FROM episodes WHERE season_id = ?2)
+`
+
+type DeleteSeasonWatchesParams struct {
+	UserID   int64
+	SeasonID int64
+}
+
+func (q *Queries) DeleteSeasonWatches(ctx context.Context, arg DeleteSeasonWatchesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSeasonWatches, arg.UserID, arg.SeasonID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteShowWatches = `-- name: DeleteShowWatches :execrows
+DELETE FROM watch_events
+WHERE user_id = ?1 AND merged_into_id IS NULL
+    AND episode_id IN (SELECT id FROM episodes WHERE show_id = ?2)
+`
+
+type DeleteShowWatchesParams struct {
+	UserID int64
+	ShowID int64
+}
+
+func (q *Queries) DeleteShowWatches(ctx context.Context, arg DeleteShowWatchesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteShowWatches, arg.UserID, arg.ShowID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteWatch = `-- name: DeleteWatch :execrows
 DELETE FROM watch_events
 WHERE id = ?1 AND user_id = ?2 AND merged_into_id IS NULL
@@ -57,6 +134,56 @@ func (q *Queries) EpisodeToMark(ctx context.Context, tmdbID int64) (EpisodeToMar
 	var i EpisodeToMarkRow
 	err := row.Scan(&i.ID, &i.AirDate)
 	return i, err
+}
+
+const episodeWatches = `-- name: EpisodeWatches :many
+SELECT w.id, w.watched_at, w.watched_on, w.source FROM watch_events w
+JOIN episodes e ON e.id = w.episode_id
+WHERE w.user_id = ?1
+    AND e.tmdb_id = ?2
+    AND w.merged_into_id IS NULL
+ORDER BY w.watched_at DESC, w.id DESC
+`
+
+type EpisodeWatchesParams struct {
+	UserID        int64
+	EpisodeTmdbID int64
+}
+
+type EpisodeWatchesRow struct {
+	ID        int64
+	WatchedAt string
+	WatchedOn sql.NullString
+	Source    string
+}
+
+// EpisodeWatches lists a user's kept watches of an episode, newest first.
+func (q *Queries) EpisodeWatches(ctx context.Context, arg EpisodeWatchesParams) ([]EpisodeWatchesRow, error) {
+	rows, err := q.db.QueryContext(ctx, episodeWatches, arg.UserID, arg.EpisodeTmdbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EpisodeWatchesRow{}
+	for rows.Next() {
+		var i EpisodeWatchesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WatchedAt,
+			&i.WatchedOn,
+			&i.Source,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const history = `-- name: History :many
@@ -454,7 +581,7 @@ func (q *Queries) ShowToMark(ctx context.Context, tmdbID int64) (int64, error) {
 }
 
 const showWatchedEpisodes = `-- name: ShowWatchedEpisodes :many
-SELECT e.tmdb_id, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at,
+SELECT e.tmdb_id, e.season_number, count(*) AS plays, CAST(max(w.watched_at) AS TEXT) AS last_watched_at,
     w.watched_on AS last_watched_on
 FROM watch_events w
 JOIN episodes e ON e.id = w.episode_id
@@ -473,6 +600,7 @@ type ShowWatchedEpisodesParams struct {
 
 type ShowWatchedEpisodesRow struct {
 	TmdbID        int64
+	SeasonNumber  int64
 	Plays         int64
 	LastWatchedAt string
 	LastWatchedOn sql.NullString
@@ -482,7 +610,8 @@ type ShowWatchedEpisodesRow struct {
 // (listed or not), by TMDB episode ID. last_watched_on is the latest
 // watch's watched_on: with a single max() SQLite takes bare columns from the
 // row holding the max, and two kept watches of one episode never share a
-// time (the dedupe window merges them).
+// time (the dedupe window merges them). season_number is the episode's own,
+// the same on every row of it (0 for specials).
 func (q *Queries) ShowWatchedEpisodes(ctx context.Context, arg ShowWatchedEpisodesParams) ([]ShowWatchedEpisodesRow, error) {
 	rows, err := q.db.QueryContext(ctx, showWatchedEpisodes, arg.UserID, arg.ShowTmdbID)
 	if err != nil {
@@ -494,6 +623,7 @@ func (q *Queries) ShowWatchedEpisodes(ctx context.Context, arg ShowWatchedEpisod
 		var i ShowWatchedEpisodesRow
 		if err := rows.Scan(
 			&i.TmdbID,
+			&i.SeasonNumber,
 			&i.Plays,
 			&i.LastWatchedAt,
 			&i.LastWatchedOn,

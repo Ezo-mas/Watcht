@@ -3,12 +3,21 @@
 	import type { ResolvedPathname } from '$app/types';
 	import { tick } from 'svelte';
 	import { ApiError } from '#lib/api/client.js';
-	import { historyPage, markEpisode, markMovie, removeWatch } from '#lib/api/tracking.js';
+	import {
+		historyPage,
+		markEpisode,
+		markMovie,
+		removeWatch,
+		removeMovieWatches,
+		removeEpisodeWatches
+	} from '#lib/api/tracking.js';
 	import type { HistoryEntry, MarkResult, MarkWhen } from '#lib/api/types.js';
 	import Button from '#lib/components/Button.svelte';
 	import Kbd from '#lib/components/Kbd.svelte';
 	import Notice from '#lib/components/Notice.svelte';
 	import PosterCard from '#lib/components/PosterCard.svelte';
+	import StripRating from '#lib/components/StripRating.svelte';
+	import StripWatchlist from '#lib/components/StripWatchlist.svelte';
 	import WatchedCheck from '#lib/components/WatchedCheck.svelte';
 	import { errorMessage, trackingMessages } from '#lib/errors.js';
 	import { formatWatch } from '#lib/format.js';
@@ -36,18 +45,27 @@
 
 	let moreBusy = $state(false);
 	let moreError = $state('');
+	let historyVersion = 0;
+	// Bulk removals by the version they made, so a page that was loading
+	// when one happened drops what it removed instead of being discarded
+	// (discarding it would stall the scroll loading until the sentinel
+	// crossed the margin again).
+	const removals: { version: number; matches: (e: HistoryEntry) => boolean }[] = [];
 
 	/** `focusNew` moves focus to the first new card (the button); scrolling never moves it. */
 	async function loadMore(focusNew: boolean) {
 		if (cursor === null || moreBusy) return;
 		moreBusy = true;
 		moreError = '';
+		const version = historyVersion;
 		try {
 			const next = await historyPage(cursor);
+			// Bulk removal can delete older plays in this page while it loads.
+			const late = removals.filter((r) => r.version > version);
 			// Pages don't overlap, but a repeated card would break the keyed
 			// list, so skip any already shown.
 			const seen = new Set(entries.map((e) => e.id));
-			const fresh = next.entries.filter((e) => !seen.has(e.id));
+			const fresh = next.entries.filter((e) => !seen.has(e.id) && !late.some((r) => r.matches(e)));
 			entries = [...entries, ...fresh];
 			cursor = next.next_cursor;
 			if (focusNew && fresh.length) {
@@ -112,6 +130,28 @@
 		return '';
 	}
 
+	async function removeAll(entry: HistoryEntry): Promise<string> {
+		const matches = (candidate: HistoryEntry) =>
+			entry.episode
+				? candidate.episode?.tmdb_id === entry.episode.tmdb_id
+				: candidate.movie?.tmdb_id === entry.movie?.tmdb_id;
+		let removed: number;
+		try {
+			({ removed } = entry.episode
+				? await removeEpisodeWatches(entry.episode.tmdb_id)
+				: await removeMovieWatches(entry.movie?.tmdb_id ?? 0));
+		} catch (e) {
+			return errorMessage(e, trackingMessages);
+		}
+		historyVersion++;
+		removals.push({ version: historyVersion, matches });
+		entries = entries.filter((candidate) => !matches(candidate));
+		toast.success(`Removed ${removed} ${removed === 1 ? 'play' : 'plays'} of ${describe(entry)}.`);
+		await tick();
+		heading?.focus();
+		return '';
+	}
+
 	/** Marks it watched again; "" when done, else the message for the menu. */
 	async function addPlay(entry: HistoryEntry, when: MarkWhen): Promise<string> {
 		let res: MarkResult;
@@ -154,7 +194,11 @@
 	function hrefOf(entry: HistoryEntry): ResolvedPathname {
 		const ep = entry.episode;
 		return ep
-			? resolve(`/(app)/shows/[id]?season=${ep.season_number}`, { id: String(ep.show.tmdb_id) })
+			? resolve('/(app)/shows/[id]/seasons/[n]/episodes/[e]', {
+					id: String(ep.show.tmdb_id),
+					n: String(ep.season_number),
+					e: String(ep.episode_number)
+				})
 			: resolve('/(app)/movies/[id]', { id: String(entry.movie?.tmdb_id ?? 0) });
 	}
 
@@ -262,45 +306,11 @@
 									buttonId="check-{entry.id}"
 									zoneNote="Browser time zone: {zone}"
 									onremove={() => removeOne(entry)}
+									onremoveall={() => removeAll(entry)}
 									onadd={(w) => addPlay(entry, w)}
 								/>
-								<!-- The watchlist arrives in slice 3; until then this does nothing and says so. -->
-								<button
-									type="button"
-									aria-disabled="true"
-									aria-label="Add to watchlist (coming in a later update)"
-									title="Add to watchlist (coming in a later update)"
-									class="grid size-10 shrink-0 cursor-not-allowed place-items-center rounded-sm text-on-screen-muted/40 focus-visible:outline-on-screen-accent sm:size-8"
-								>
-									<svg
-										aria-hidden="true"
-										viewBox="0 0 16 16"
-										class="size-4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.8"
-										stroke-linecap="round"
-										><path d="M6 4h7.5M6 8h7.5M6 12h7.5M2.5 4h.01M2.5 8h.01M2.5 12h.01" /></svg
-									>
-								</button>
-								{#if rating}
-									<span
-										title="TMDB rating"
-										class="ml-auto flex items-center gap-1 pr-1.5 text-xs font-semibold text-on-screen tabular-nums"
-									>
-										<svg
-											aria-hidden="true"
-											viewBox="0 0 16 16"
-											class="size-3.5 text-on-screen-accent"
-											fill="currentColor"
-											><path
-												d="M8 14s-5.75-3.4-5.75-7.6A3.15 3.15 0 0 1 8 4.5a3.15 3.15 0 0 1 5.75 1.9C13.75 10.6 8 14 8 14z"
-											/></svg
-										>
-										<span class="sr-only">TMDB rating</span>
-										{rating}
-									</span>
-								{/if}
+								<StripWatchlist />
+								{#if rating}<StripRating {rating} />{/if}
 							{/snippet}
 						</PosterCard>
 					</li>
