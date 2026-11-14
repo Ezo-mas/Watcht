@@ -43,8 +43,9 @@ type Deps struct {
 	// X-Forwarded-Proto headers are believed (WATCHT_TRUSTED_PROXIES).
 	TrustedProxies []netip.Prefix
 
-	// loginWait overrides the login deadline, for tests.
-	loginWait time.Duration
+	// LoginWait overrides the deadline for password-hashing requests. A zero
+	// value uses the default; tests use a shorter wait for busy requests.
+	LoginWait time.Duration
 }
 
 const healthTimeout = 2 * time.Second
@@ -64,7 +65,7 @@ func NewRouter(d Deps) (http.Handler, error) {
 		limiter:       limiter,
 		proxies:       proxies(d.TrustedProxies),
 		secureCookies: strings.HasPrefix(d.BaseOrigin, "https://"),
-		loginWait:     cmp.Or(d.loginWait, loginWait),
+		loginWait:     cmp.Or(d.LoginWait, loginWait),
 		logger:        d.Logger,
 	}
 	authAPI.register(api)

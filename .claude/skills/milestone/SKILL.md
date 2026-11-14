@@ -11,9 +11,10 @@ checks, has had an independent review, and leaves the docs accurate.
 
 ## 1. Scope the slice
 
-1. Read the milestone in `docs/rewrite-plan.md` and its "Done when" line.
-   Read `AGENTS.md`, the guides it points to for the areas you'll touch,
-   and `docs/TECH_DEBT.md`.
+1. Read the milestone in `docs/rewrite-plan.md`, its "Done when" line, and
+   its relevant historical record under `docs/decisions/` if present. Read
+   `AGENTS.md`, the guides it points to for the areas you'll touch, and
+   `docs/TECH_DEBT.md`.
 2. Check what's already done: `git log --oneline -20`, and look at the
    code the milestone builds on.
 3. If the milestone is too big for one reviewable change (roughly more
@@ -62,8 +63,9 @@ In the same change:
 
 - `AGENTS.md` and `docs/agent-guides/`: real commands, paths, and new
   conventions. Remove anything the change made untrue.
-- `docs/rewrite-plan.md`: mark what's done, and record any decision the
-  user made along the way.
+- `docs/rewrite-plan.md`: update the milestone's status line when a slice
+  merges or its status changes. Record historical decisions under
+  `docs/decisions/` and keep enduring rules in the relevant guide.
 - `README.md`: only when user-facing behavior or setup changed.
 - `docs/TECH_DEBT.md`: confirmed, deferred, serious issues only.
 

@@ -64,6 +64,13 @@ install Go tools globally.
 
 ## Caveats
 
+- The repository uses LF line endings, including on Windows. Existing
+  checkouts made with `core.autocrlf=true` need their tracked text files
+  converted to LF; preserve any local changes when doing so. New checkouts
+  use the repository's `.gitattributes` automatically.
+- The database's Unix file-mode tests skip on Windows, where Go's chmod
+  does not enforce Unix permission bits. Restrict the data directory with
+  Windows ACLs; those tests do not verify the ACL configuration.
 - **Skips are not passes.** Name every skipped test and its reason in your
   summary.
 - A check failure is reported, never suppressed. Don't skip tests, weaken

@@ -20,6 +20,9 @@ import (
 
 var cheapArgon2 = auth.Argon2Params{Memory: 64, Time: 1, Threads: 1}
 
+// Busy HTTP response tests live in internal/auth/http_busy_test.go so they
+// can use auth's test-only helper to hold every password-hashing slot.
+
 type testClock struct{ t time.Time }
 
 func (c *testClock) Now() time.Time { return c.t }
@@ -52,7 +55,7 @@ func newAuthServer(t *testing.T, opts authServerOptions) *authServer {
 		LoginLimiter:   opts.limiter,
 		BaseOrigin:     opts.baseOrigin,
 		TrustedProxies: opts.proxies,
-		loginWait:      opts.loginWait,
+		LoginWait:      opts.loginWait,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -532,22 +535,6 @@ func TestAuthLogsNoSecrets(t *testing.T) {
 	for _, secret := range []string{"a secret password", "another secret", c.Value} {
 		if strings.Contains(out, secret) {
 			t.Errorf("the log contains %q:\n%s", secret, out)
-		}
-	}
-}
-
-// A login that runs out of time (every hashing slot busy) is the server's
-// problem: 503, Retry-After, and the attempt isn't counted.
-func TestLoginBusy(t *testing.T) {
-	s := newAuthServer(t, authServerOptions{limiter: auth.NewLimiter(1, time.Hour, nil), loginWait: time.Nanosecond})
-	s.setup("admin", "long enough")
-	for i := range 3 {
-		rec := s.do(request{method: "POST", path: "/api/v1/auth/login", body: creds("admin", "long enough")})
-		if rec.Code != http.StatusServiceUnavailable || decodeError(t, rec).Code != "busy" {
-			t.Fatalf("attempt %d: %d %s, want 503 busy (and not rate-limited: the attempt is refunded)", i+1, rec.Code, rec.Body)
-		}
-		if rec.Header().Get("Retry-After") != "5" {
-			t.Errorf("Retry-After = %q, want 5", rec.Header().Get("Retry-After"))
 		}
 	}
 }
