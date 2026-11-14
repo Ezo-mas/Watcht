@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -168,6 +169,9 @@ func TestPing(t *testing.T) {
 }
 
 func TestDatabaseFilesArePrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce Unix permission bits; file access depends on ACLs")
+	}
 	path := filepath.Join(t.TempDir(), "watcht.db")
 	d, err := Open(context.Background(), path)
 	if err != nil {
@@ -189,6 +193,9 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 }
 
 func TestOpenTightensExistingFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce Unix permission bits; file access depends on ACLs")
+	}
 	path := filepath.Join(t.TempDir(), "watcht.db")
 	// An existing database, e.g. restored with cp, with world-readable
 	// files, including WAL files left by a crash.
@@ -226,7 +233,11 @@ func TestOpenTightensExistingFiles(t *testing.T) {
 }
 
 func TestPathWithSpecialCharacters(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "my data #1 ?x=y")
+	name := "my data #1 ?x=y"
+	if runtime.GOOS == "windows" {
+		name = "my data #1 %x=y"
+	}
+	dir := filepath.Join(t.TempDir(), name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -443,6 +454,9 @@ func TestBackupRefusesExistingFile(t *testing.T) {
 }
 
 func TestBackupIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not enforce Unix permission bits; file access depends on ACLs")
+	}
 	d := openTemp(t)
 	dest := filepath.Join(t.TempDir(), "backups", "snap.db")
 	if err := d.Backup(context.Background(), dest); err != nil {

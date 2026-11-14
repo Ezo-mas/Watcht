@@ -49,7 +49,10 @@ asset=$(grep -o '/_app/immutable/[^"]*\.js' <<<"$index" | head -n 1)
 [[ -n $asset ]] || fail "index.html references no /_app/immutable/ script; is the frontend embedded?"
 
 type=$(curl -fsS -o /dev/null -w '%{content_type}' "$base$asset")
-[[ $type == text/javascript* ]] || fail "$asset served as '$type', want text/javascript"
+case ${type%%;*} in
+	text/javascript|application/javascript) ;;
+	*) fail "$asset served as '$type', want a JavaScript media type" ;;
+esac
 
 status=$(curl -s -o /dev/null -w '%{http_code}' "$base/_app/immutable/missing.js")
 [[ $status == 404 ]] || fail "missing asset returned $status, want 404"

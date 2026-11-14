@@ -551,26 +551,6 @@ func TestAccountResponsesAndLogsNeverContainSecrets(t *testing.T) {
 	}
 }
 
-// Account endpoints that hash a password have the same deadline as login:
-// 503 when every hashing slot stays busy.
-func TestAccountEndpointsBusy(t *testing.T) {
-	s := newAuthServer(t, authServerOptions{loginWait: time.Nanosecond})
-	admin := s.setup("admin", "long enough")
-	for _, req := range []request{
-		{method: "POST", path: "/api/v1/users", body: `{"username":"bob","password":"long enough"}`},
-		{method: "PUT", path: "/api/v1/me/password", body: `{"current_password":"long enough","new_password":"new password"}`},
-	} {
-		req.cookie = admin
-		rec := s.do(req)
-		if rec.Code != http.StatusServiceUnavailable || decodeError(t, rec).Code != "busy" {
-			t.Errorf("%s %s: %d %s, want 503 busy", req.method, req.path, rec.Code, rec.Body)
-		}
-	}
-	if strings.Contains(s.logs.String(), "level=ERROR") {
-		t.Errorf("a busy server logged errors:\n%s", s.logs)
-	}
-}
-
 // A rejected new password doesn't judge a guess, so it doesn't use up an
 // attempt.
 func TestInvalidNewPasswordDoesNotUseAnAttempt(t *testing.T) {

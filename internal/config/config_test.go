@@ -15,6 +15,10 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defaultDir, err := filepath.Abs("/data")
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name        string
 		env         map[string]string
@@ -22,10 +26,10 @@ func TestLoad(t *testing.T) {
 		wantDataDir string
 		wantErr     bool
 	}{
-		{name: "defaults", env: map[string]string{}, wantListen: ":8080", wantDataDir: "/data"},
-		{name: "empty uses defaults", env: map[string]string{"WATCHT_LISTEN": "", "WATCHT_DATA_DIR": ""}, wantListen: ":8080", wantDataDir: "/data"},
-		{name: "custom port", env: map[string]string{"WATCHT_LISTEN": ":9090"}, wantListen: ":9090", wantDataDir: "/data"},
-		{name: "host and port", env: map[string]string{"WATCHT_LISTEN": "127.0.0.1:8099"}, wantListen: "127.0.0.1:8099", wantDataDir: "/data"},
+		{name: "defaults", env: map[string]string{}, wantListen: ":8080", wantDataDir: defaultDir},
+		{name: "empty uses defaults", env: map[string]string{"WATCHT_LISTEN": "", "WATCHT_DATA_DIR": ""}, wantListen: ":8080", wantDataDir: defaultDir},
+		{name: "custom port", env: map[string]string{"WATCHT_LISTEN": ":9090"}, wantListen: ":9090", wantDataDir: defaultDir},
+		{name: "host and port", env: map[string]string{"WATCHT_LISTEN": "127.0.0.1:8099"}, wantListen: "127.0.0.1:8099", wantDataDir: defaultDir},
 		{name: "relative data dir becomes absolute", env: map[string]string{"WATCHT_DATA_DIR": "data"}, wantListen: ":8080", wantDataDir: filepath.Join(cwd, "data")},
 		{name: "missing port", env: map[string]string{"WATCHT_LISTEN": "localhost"}, wantErr: true},
 	}
